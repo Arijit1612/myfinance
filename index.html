@@ -217,6 +217,20 @@ main { padding-block: 16px 40px; }
 .ptable { display: grid; gap: 8px; }
 .prow { display: grid; grid-template-columns: 0.7fr 1.5fr 1fr 1.2fr; gap: 8px; }
 .prow span { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.rdetail.pl { border-left: 0; padding-left: 0; }
+.ptotal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.ptotal div { background: var(--field); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.ptotal small { display: block; font-size: 12px; color: var(--muted); }
+.ptotal b { font-size: 18px; font-weight: 600; }
+.rcust b.warnt { color: var(--warn); }
+.rtap { cursor: pointer; }
+.rtap.ropen span:first-child { color: var(--accent); font-weight: 600; }
+.rdetail { display: grid; gap: 8px; padding: 2px 0 6px 10px; border-left: 2px solid var(--line); }
+.rcust { display: flex; justify-content: space-between; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+.rcust b { display: block; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.rcust small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.rcust .ramt { text-align: right; flex: none; }
+.rrow { grid-template-columns: 1.3fr 0.7fr 1.2fr 1.2fr; }
 .prow.phead span { font-weight: 600; background: var(--card); }
 
 /* backup */
@@ -245,6 +259,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       <button class="tab" role="tab" id="tab-collection" data-view="collection" aria-selected="false">Collection Entry</button>
       <button class="tab" role="tab" id="tab-add" data-view="add" aria-selected="false">Add Customer</button>
       <button class="tab" role="tab" id="tab-list" data-view="list" aria-selected="false">Customer List</button>
+      <button class="tab" role="tab" id="tab-pending" data-view="pending" aria-selected="false">Pending List</button>
+      <button class="tab" role="tab" id="tab-report" data-view="report" aria-selected="false">Monthly Report</button>
     </nav>
   </div>
 </header>
@@ -390,6 +406,22 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     </div>
   </section>
 
+  <section id="view-pending" aria-labelledby="tab-pending" hidden>
+    <div class="formcard">
+      <div class="lhead"><h2>Pending List</h2><span class="count" id="pcount"></span></div>
+      <p class="helper">தவணை தேதி தாண்டியும் கட்டாத customers.</p>
+      <div id="pending"></div>
+    </div>
+  </section>
+
+  <section id="view-report" aria-labelledby="tab-report" hidden>
+    <div class="formcard">
+      <div class="lhead"><h2>Monthly Report</h2></div>
+      <p class="helper">மாதம் வாரியா customers-க்கு கொடுத்த loan தொகை.</p>
+      <div id="report"></div>
+    </div>
+  </section>
+
   <section id="view-detail" hidden>
     <button class="back" data-go="list">← Customer List</button>
     <div class="formcard" id="detail"></div>
@@ -416,8 +448,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var VIEWS = ["dashboard", "collection", "add", "list", "customer"];
-  var SECTION = { dashboard: "dashboard", collection: "collection", add: "add", list: "list", customer: "detail" };
+  var VIEWS = ["dashboard", "collection", "add", "list", "pending", "report", "customer"];
+  var SECTION = { dashboard: "dashboard", collection: "collection", add: "add", list: "list", pending: "pending", report: "report", customer: "detail" };
   var inr = function (n) { return "₹" + Math.round(n || 0).toLocaleString("en-IN"); };
   var pad = function (n) { return String(n).padStart(2, "0"); };
   var dstr = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
@@ -597,8 +629,71 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#detail").innerHTML = h;
   }
 
+
+  function overdueOf(c) {
+    if (isDone(c) || !c.firstDate) return null;
+    var t = today(), step = c.scheme === "daily" ? 1 : 7, n = count(c), k = 0;
+    while (k < n && addDays(c.firstDate, step * k) < t) k++;
+    if (!k) return null;
+    var inst = +c.installment || 0;
+    var amt = Math.min(k * inst, +c.totalDue || 0) - sum(c);
+    if (amt <= 0) return null;
+    var firstMiss = Math.floor(sum(c) / (inst || 1));
+    var since = addDays(c.firstDate, step * firstMiss);
+    var days = Math.round((new Date(parts(t)[0], parts(t)[1] - 1, parts(t)[2]) - new Date(parts(since)[0], parts(since)[1] - 1, parts(since)[2])) / 86400000);
+    return { amt: Math.min(amt, pendingOf(c)), days: Math.max(days, 1), since: since };
+  }
+  function renderPending() {
+    var el = $("#pending");
+    if (!el) return;
+    var rows = [];
+    customers.forEach(function (c) { var o = overdueOf(c); if (o) rows.push({ c: c, o: o }); });
+    rows.sort(function (a, b) { return b.o.amt - a.o.amt; });
+    $("#pcount").textContent = rows.length + (rows.length === 1 ? " customer" : " customers");
+    if (!rows.length) { el.innerHTML = '<div class="notice"><p>Pending எதுவும் இல்லை.</p></div>'; return; }
+    var tot = 0, bal = 0;
+    rows.forEach(function (r) { tot += r.o.amt; bal += pendingOf(r.c); });
+    var h = '<div class="ptotal"><div><small>Overdue மொத்தம்</small><b>' + esc(inr(tot)) + '</b></div><div><small>மொத்த Balance</small><b>' + esc(inr(bal)) + "</b></div></div>";
+    h += '<div class="rdetail pl">' + rows.map(function (r) {
+      var c = r.c, u = c.scheme === "daily" ? "day" : "wk";
+      return '<div class="rcust" data-open="' + esc(c.id) + '"><div><b>' + esc(c.loanId || "") + " · " + esc(c.name) + "</b><small>" + esc(c.phone || "") + (c.area ? " · " + esc(c.area) : "") + "</small><small>" + esc(fmtD(r.o.since)) + " முதல் · " + r.o.days + " days late</small></div><div class=\"ramt\"><b class=\"warnt\">" + esc(inr(r.o.amt)) + "</b><small>Balance " + esc(inr(pendingOf(c))) + "</small></div></div>";
+    }).join("") + "</div>";
+    el.innerHTML = h;
+  }
+
+  var repOpen = null;
+  function renderReport() {
+    var el = $("#report");
+    if (!el) return;
+    var m = {};
+    customers.forEach(function (c) {
+      if (!c.loanDate) return;
+      var k = String(c.loanDate).slice(0, 7);
+      var r = m[k] || (m[k] = { n: 0, given: 0, loan: 0, list: [] });
+      r.n++; r.given += +c.disbursed || 0; r.loan += +c.loanAmount || 0; r.list.push(c);
+    });
+    var keys = Object.keys(m).sort().reverse();
+    if (!keys.length) { el.innerHTML = '<div class="notice"><p>No loans yet.</p></div>'; return; }
+    var tot = { n: 0, given: 0, loan: 0 };
+    var h = '<div class="ptable"><div class="prow phead rrow"><span>Month</span><span>Nos</span><span>Given</span><span>Loan Amt</span></div>';
+    keys.forEach(function (k) {
+      var r = m[k], y = k.slice(0, 4), mo = +k.slice(5, 7), open = repOpen === k;
+      tot.n += r.n; tot.given += r.given; tot.loan += r.loan;
+      h += '<div class="prow rrow rtap' + (open ? " ropen" : "") + '" data-month="' + k + '"><span>' + (open ? "▾ " : "▸ ") + MON[mo - 1] + " " + y + "</span><span>" + r.n + "</span><span>" + esc(inr(r.given)) + "</span><span>" + esc(inr(r.loan)) + "</span></div>";
+      if (open) {
+        r.list.sort(function (a, b2) { return a.loanDate < b2.loanDate ? 1 : a.loanDate > b2.loanDate ? -1 : 0; });
+        h += '<div class="rdetail">' + r.list.map(function (c) {
+          return '<div class="rcust" data-open="' + esc(c.id) + '"><div><b>' + esc(c.loanId || "") + " · " + esc(c.name) + "</b><small>" + esc(fmtD(c.loanDate)) + "</small></div><div class=\"ramt\"><b>" + esc(inr(+c.disbursed || 0)) + "</b><small>Loan " + esc(inr(+c.loanAmount || 0)) + "</small></div></div>";
+        }).join("") + "</div>";
+      }
+    });
+    h += '<div class="prow phead rrow"><span>Total</span><span>' + tot.n + "</span><span>" + esc(inr(tot.given)) + "</span><span>" + esc(inr(tot.loan)) + "</span></div></div>";
+    h += '<p class="hint">மாதத்தை தொட்டா அந்த மாசம் loan வாங்கிய customers தெரியும். Given = கையில் கொடுத்த தொகை (Loan − Interest).</p>';
+    el.innerHTML = h;
+  }
+
   function renderAll() {
-    renderDashboard(); renderList(); renderCollection();
+    renderDashboard(); renderList(); renderCollection(); renderReport(); renderPending();
     if (cur === "customer") {
       if (!byId(selectedId)) { selectedId = null; go("list"); return; }
       renderDetail();
@@ -671,11 +766,13 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     cur = v;
     VIEWS.forEach(function (n) { $("#view-" + SECTION[n]).hidden = n !== v; });
     var tab = v === "customer" ? "list" : v;
-    ["dashboard", "collection", "add", "list"].forEach(function (n) { $("#tab-" + n).setAttribute("aria-selected", n === tab ? "true" : "false"); });
+    ["dashboard", "collection", "add", "list", "pending", "report"].forEach(function (n) { $("#tab-" + n).setAttribute("aria-selected", n === tab ? "true" : "false"); });
     var tel = $("#tab-" + tab), nav = $(".tabs");
     if (tel && nav) nav.scrollLeft = Math.max(0, tel.offsetLeft - nav.offsetLeft - (nav.clientWidth - tel.offsetWidth) / 2);
     if (v === "dashboard") renderDashboard();
     if (v === "list") renderList();
+    if (v === "report") renderReport();
+    if (v === "pending") renderPending();
     if (v === "customer") renderDetail();
     if (v === "collection") { $("#c-date").max = today(); renderCollection(); }
     window.scrollTo(0, 0);
@@ -721,6 +818,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         }
         renderCollection(); return;
       }
+      var mr = e.target.closest("[data-month]");
+      if (mr) { var mk = mr.getAttribute("data-month"); repOpen = repOpen === mk ? null : mk; renderReport(); return; }
       var o = e.target.closest("[data-open]");
       if (o) openCustomer(o.getAttribute("data-open"), false);
       return;

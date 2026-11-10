@@ -223,6 +223,7 @@ main { padding-block: 16px 40px; }
 .ptotal small { display: block; font-size: 12px; color: var(--muted); }
 .ptotal b { font-size: 18px; font-weight: 600; }
 .rcust b.warnt { color: var(--warn); }
+#cap-list .b.del { margin-top: 6px; padding: 6px 10px; font-size: 12px; }
 .rtap { cursor: pointer; }
 .rtap.ropen span:first-child { color: var(--accent); font-weight: 600; }
 .rdetail { display: grid; gap: 8px; padding: 2px 0 6px 10px; border-left: 2px solid var(--line); }
@@ -259,6 +260,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       <button class="tab" role="tab" id="tab-collection" data-view="collection" aria-selected="false">Collection Entry</button>
       <button class="tab" role="tab" id="tab-add" data-view="add" aria-selected="false">Add Customer</button>
       <button class="tab" role="tab" id="tab-list" data-view="list" aria-selected="false">Customer List</button>
+      <button class="tab" role="tab" id="tab-capital" data-view="capital" aria-selected="false">Capital</button>
       <button class="tab" role="tab" id="tab-pending" data-view="pending" aria-selected="false">Pending List</button>
       <button class="tab" role="tab" id="tab-report" data-view="report" aria-selected="false">Monthly Report</button>
     </nav>
@@ -406,6 +408,32 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     </div>
   </section>
 
+  <section id="view-capital" aria-labelledby="tab-capital" hidden>
+    <div class="formcard">
+      <h2>Capital</h2>
+      <div class="ptotal" id="cap-sum"></div>
+      <div class="field">
+        <label for="cap-amt">Amount (₹) *</label>
+        <input type="number" id="cap-amt" inputmode="numeric" min="1">
+      </div>
+      <div class="field">
+        <label for="cap-type">Type</label>
+        <select id="cap-type"><option value="add">Capital சேர்த்தது (Add)</option><option value="withdraw">Capital எடுத்தது (Withdraw)</option></select>
+      </div>
+      <div class="field">
+        <label for="cap-date">Date</label>
+        <input type="date" id="cap-date">
+      </div>
+      <div class="field">
+        <label for="cap-note">Notes</label>
+        <input type="text" id="cap-note" placeholder="Optional" autocomplete="off">
+      </div>
+      <button class="btn" id="cap-save" type="button">Save Capital</button>
+      <p class="subh">History</p>
+      <div id="cap-list"></div>
+    </div>
+  </section>
+
   <section id="view-pending" aria-labelledby="tab-pending" hidden>
     <div class="formcard">
       <div class="lhead"><h2>Pending List</h2><span class="count" id="pcount"></span></div>
@@ -448,8 +476,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var VIEWS = ["dashboard", "collection", "add", "list", "pending", "report", "customer"];
-  var SECTION = { dashboard: "dashboard", collection: "collection", add: "add", list: "list", pending: "pending", report: "report", customer: "detail" };
+  var VIEWS = ["dashboard", "collection", "add", "list", "capital", "pending", "report", "customer"];
+  var SECTION = { dashboard: "dashboard", collection: "collection", add: "add", list: "list", capital: "capital", pending: "pending", report: "report", customer: "detail" };
   var inr = function (n) { return "₹" + Math.round(n || 0).toLocaleString("en-IN"); };
   var pad = function (n) { return String(n).padStart(2, "0"); };
   var dstr = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
@@ -466,6 +494,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 
   var col = null;
   var customers = [];
+  var capital = [];
   var loaded = false;
   var query = "";
   var cur = "dashboard";
@@ -538,7 +567,9 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       ["Cash Collected Today", inr(s.cash), ""],
       ["GPay / UPI Today", inr(s.upi), ""],
       ["Profit Earned · Completed Loans", inr(s.profitDone), s.profitDone > 0 ? "good" : ""],
-      ["Expected Profit · Active Loans", inr(s.profitExp), ""]
+      ["Expected Profit · Active Loans", inr(s.profitExp), ""],
+      ["Capital Invested", inr(capNet()), ""],
+      ["Cash in Hand", inr(cashInHand()), cashInHand() < 0 ? "warn" : ""]
     ];
     $("#tiles").innerHTML = tiles.map(function (t) {
       return '<div class="tile"><p class="k">' + esc(t[0]) + '</p><p class="v ' + t[2] + '">' + esc(t[1]) + "</p></div>";
@@ -630,6 +661,43 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
 
 
+  function capNet() {
+    var t = 0;
+    capital.forEach(function (x) { t += (x.type === "withdraw" ? -1 : 1) * (+x.amount || 0); });
+    return t;
+  }
+  function cashInHand() {
+    var coll = 0, given = 0;
+    customers.forEach(function (c) { coll += sum(c); given += +c.disbursed || 0; });
+    return capNet() + coll - given;
+  }
+  var capConfirm = null;
+  function renderCapital() {
+    var sm = $("#cap-sum"), ls = $("#cap-list");
+    if (!sm || !ls) return;
+    sm.innerHTML = '<div><small>Capital Invested</small><b>' + esc(inr(capNet())) + '</b></div><div><small>Cash in Hand</small><b>' + esc(inr(cashInHand())) + "</b></div>";
+    if (!capital.length) { ls.innerHTML = '<div class="notice"><p>Capital entry இன்னும் இல்லை.</p></div>'; return; }
+    var rows2 = capital.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? 1 : (a.date || "") > (b.date || "") ? -1 : 0; });
+    ls.innerHTML = '<div class="rdetail pl">' + rows2.map(function (x) {
+      var w = x.type === "withdraw", id = esc(x.id);
+      return '<div class="rcust"><div><b>' + (w ? "Withdraw" : "Capital Add") + "</b><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + "</small></div><div class=\"ramt\"><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + '</b><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
+    }).join("") + "</div>";
+  }
+  $("#cap-save").addEventListener("click", function () {
+    var amt = +$("#cap-amt").value, d = $("#cap-date").value || today();
+    if (!(amt > 0)) { toast("Amount போடுங்க."); return; }
+    if (d > today()) { toast("எதிர்கால தேதி வேண்டாம்."); return; }
+    col.add({ kind: "capital", type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
+    $("#cap-amt").value = ""; $("#cap-note").value = "";
+    toast("Capital saved.");
+  });
+  $("#cap-list").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-capdel]"); if (!b) return;
+    var id = b.getAttribute("data-capdel");
+    if (capConfirm !== id) { capConfirm = id; renderCapital(); return; }
+    capConfirm = null; col.doc(id).delete(); toast("Deleted.");
+  });
+
   function overdueOf(c) {
     if (isDone(c) || !c.firstDate) return null;
     var t = today(), step = c.scheme === "daily" ? 1 : 7, n = count(c), k = 0;
@@ -693,7 +761,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
 
   function renderAll() {
-    renderDashboard(); renderList(); renderCollection(); renderReport(); renderPending();
+    renderDashboard(); renderList(); renderCollection(); renderReport(); renderPending(); renderCapital();
     if (cur === "customer") {
       if (!byId(selectedId)) { selectedId = null; go("list"); return; }
       renderDetail();
@@ -766,13 +834,14 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     cur = v;
     VIEWS.forEach(function (n) { $("#view-" + SECTION[n]).hidden = n !== v; });
     var tab = v === "customer" ? "list" : v;
-    ["dashboard", "collection", "add", "list", "pending", "report"].forEach(function (n) { $("#tab-" + n).setAttribute("aria-selected", n === tab ? "true" : "false"); });
+    ["dashboard", "collection", "add", "list", "capital", "pending", "report"].forEach(function (n) { $("#tab-" + n).setAttribute("aria-selected", n === tab ? "true" : "false"); });
     var tel = $("#tab-" + tab), nav = $(".tabs");
     if (tel && nav) nav.scrollLeft = Math.max(0, tel.offsetLeft - nav.offsetLeft - (nav.clientWidth - tel.offsetWidth) / 2);
     if (v === "dashboard") renderDashboard();
     if (v === "list") renderList();
     if (v === "report") renderReport();
     if (v === "pending") renderPending();
+    if (v === "capital") { $("#cap-date").max = today(); if (!$("#cap-date").value) $("#cap-date").value = today(); renderCapital(); }
     if (v === "customer") renderDetail();
     if (v === "collection") { $("#c-date").max = today(); renderCollection(); }
     window.scrollTo(0, 0);
@@ -985,7 +1054,9 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     }
   };
   function refresh() {
-    customers = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var sorted = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    customers = sorted.filter(function (x) { return x.kind !== "capital"; });
+    capital = sorted.filter(function (x) { return x.kind === "capital"; });
     loaded = true; syncId(); renderAll(); renderBackup();
   }
   function netStatus() {
@@ -1010,7 +1081,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
   function stopData() {
     if (unsub) { unsub(); unsub = null; }
-    rows = []; customers = []; loaded = false; renderAll();
+    rows = []; customers = []; capital = []; loaded = false; renderAll();
   }
 
   /* backup + restore */
@@ -1059,7 +1130,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       try {
         var d = JSON.parse(String(r.result)), list = Array.isArray(d) ? d : d.customers;
         if (!Array.isArray(list)) throw new Error("bad");
-        list.forEach(function (c) { if (!c || typeof c !== "object" || !c.name) throw new Error("bad"); });
+        list.forEach(function (c) { if (!c || typeof c !== "object" || !(c.name || c.kind === "capital")) throw new Error("bad"); });
         pending = list;
         $("#bk-msg").textContent = "Add " + list.length + " customers from the file? Customers with the same ID are overwritten.";
         $("#bk-confirm").hidden = false;

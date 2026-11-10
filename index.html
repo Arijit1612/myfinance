@@ -223,6 +223,10 @@ main { padding-block: 16px 40px; }
 .ptotal small { display: block; font-size: 12px; color: var(--muted); }
 .ptotal b { font-size: 18px; font-weight: 600; }
 .rcust b.warnt { color: var(--warn); }
+.rcust.arr { align-items: center; }
+.rcust.arr .b { padding: 8px 14px; font-size: 16px; }
+.rcust.arr .b:disabled { opacity: .35; }
+#arr-list { display: grid; gap: 8px; margin: 8px 0 12px; }
 #cap-list .b.del { margin-top: 6px; padding: 6px 10px; font-size: 12px; }
 .rtap { cursor: pointer; }
 .rtap.ropen span:first-child { color: var(--accent); font-weight: 600; }
@@ -257,12 +261,12 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     <p class="sub"><span class="dot" id="dot"></span><span id="status">Daily Collection Manager · Offline</span></p>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-dashboard" data-view="dashboard" aria-selected="true">Dashboard</button>
-      <button class="tab" role="tab" id="tab-collection" data-view="collection" aria-selected="false">Collection Entry</button>
       <button class="tab" role="tab" id="tab-add" data-view="add" aria-selected="false">Add Customer</button>
+      <button class="tab" role="tab" id="tab-collection" data-view="collection" aria-selected="false">Collection Entry</button>
       <button class="tab" role="tab" id="tab-list" data-view="list" aria-selected="false">Customer List</button>
-      <button class="tab" role="tab" id="tab-capital" data-view="capital" aria-selected="false">Capital</button>
       <button class="tab" role="tab" id="tab-pending" data-view="pending" aria-selected="false">Pending List</button>
       <button class="tab" role="tab" id="tab-report" data-view="report" aria-selected="false">Monthly Report</button>
+      <button class="tab" role="tab" id="tab-capital" data-view="capital" aria-selected="false">Cash Book</button>
     </nav>
   </div>
 </header>
@@ -272,7 +276,16 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     <p class="date" id="today-label"></p>
     <div class="grid" id="tiles"></div>
     <div id="dash-empty"></div>
-    <div class="formcard" id="backup">
+        <div class="formcard" id="arrange">
+      <h2>Arrange Tabs</h2>
+      <button class="btn ghost" id="arr-toggle" type="button">Arrange Tabs</button>
+      <div id="arr-panel" hidden>
+        <p class="hint">⬆ ⬇ தொட்டு order மாத்துங்க.</p>
+        <div id="arr-list"></div>
+        <button class="btn ghost" id="arr-reset" type="button">Reset to default</button>
+      </div>
+    </div>
+<div class="formcard" id="backup">
       <h2>Backup</h2>
       <p class="hint" id="bk-last"></p>
       <div class="btnrow">
@@ -410,7 +423,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 
   <section id="view-capital" aria-labelledby="tab-capital" hidden>
     <div class="formcard">
-      <h2>Capital</h2>
+      <h2>Cash Book</h2>
       <div class="ptotal" id="cap-sum"></div>
       <div class="field">
         <label for="cap-amt">Amount (₹) *</label>
@@ -671,6 +684,38 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     customers.forEach(function (c) { coll += sum(c); given += +c.disbursed || 0; });
     return capNet() + coll - given;
   }
+  /* tab order */
+  var TAB_DEFAULT = ["dashboard", "add", "collection", "list", "pending", "report", "capital"];
+  var KEY_TABS = "mf.tabs";
+  function tabOrder() {
+    try {
+      var o = JSON.parse(localStorage.getItem(KEY_TABS) || "null");
+      if (Array.isArray(o) && o.length === TAB_DEFAULT.length && TAB_DEFAULT.every(function (x) { return o.indexOf(x) >= 0; })) return o;
+    } catch (e) {}
+    return TAB_DEFAULT.slice();
+  }
+  function applyTabs(o) {
+    var nav = $(".tabs");
+    o.forEach(function (n) { nav.appendChild($("#tab-" + n)); });
+  }
+  function saveTabs(o) { try { localStorage.setItem(KEY_TABS, JSON.stringify(o)); } catch (e) {} }
+  function renderArrange() {
+    var o = tabOrder();
+    $("#arr-list").innerHTML = o.map(function (n, i) {
+      return '<div class="rcust arr"><b>' + esc($("#tab-" + n).textContent) + '</b><span><button class="b edit" data-arr="up" data-i="' + i + '" type="button"' + (i === 0 ? " disabled" : "") + '>⬆</button> <button class="b edit" data-arr="dn" data-i="' + i + '" type="button"' + (i === o.length - 1 ? " disabled" : "") + ">⬇</button></span></div>";
+    }).join("");
+  }
+  $("#arr-toggle").addEventListener("click", function () { var p = $("#arr-panel"); p.hidden = !p.hidden; if (!p.hidden) renderArrange(); });
+  $("#arr-list").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-arr]"); if (!b || b.disabled) return;
+    var o = tabOrder(), i = +b.getAttribute("data-i"), j = b.getAttribute("data-arr") === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= o.length) return;
+    var t = o[i]; o[i] = o[j]; o[j] = t;
+    saveTabs(o); applyTabs(o); renderArrange();
+  });
+  $("#arr-reset").addEventListener("click", function () { saveTabs(TAB_DEFAULT.slice()); applyTabs(TAB_DEFAULT); renderArrange(); });
+  applyTabs(tabOrder());
+
   var capConfirm = null;
   function renderCapital() {
     var sm = $("#cap-sum"), ls = $("#cap-list");

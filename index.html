@@ -224,6 +224,15 @@ main { padding-block: 16px 40px; }
 .hint.warnt { color: var(--warn); }
 .hint.bad { color: var(--bad); }
 input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
+
+/* sign in */
+#login { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow: auto; display: grid; align-content: center;
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
+.loginbox { width: 100%; max-width: 420px; margin: 0 auto; display: grid; gap: 14px; }
+.loginbox h1 { margin: 0; font-size: 28px; font-weight: 600; }
+.field input[type="password"] { width: 100%; min-width: 0; background: var(--field); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; font-size: 16px; color: var(--fg); -webkit-appearance: none; appearance: none; }
+#account { margin-top: 16px; }
 </style>
 </head>
 <body>
@@ -253,13 +262,18 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         <button class="btn ghost" id="bk-csv" type="button">Excel (CSV)</button>
       </div>
       <div class="field">
-        <label for="bk-file">Restore from a backup file</label>
+        <label for="bk-file">Import from a backup file</label>
         <input type="file" id="bk-file" accept=".json,application/json">
       </div>
       <div id="bk-confirm" class="notice" hidden>
         <p id="bk-msg"></p>
-        <div class="btnrow"><button class="btn small" id="bk-yes" type="button">Restore</button><button class="btn ghost small" id="bk-no" type="button">Cancel</button></div>
+        <div class="btnrow"><button class="btn small" id="bk-yes" type="button">Import</button><button class="btn ghost small" id="bk-no" type="button">Cancel</button></div>
       </div>
+    </div>
+    <div class="formcard" id="account">
+      <h2>Account</h2>
+      <p class="hint">Signed in as <span id="acct-email"></span></p>
+      <div class="btnrow"><button class="btn ghost" id="logout" type="button">Log out</button></div>
     </div>
   </section>
 
@@ -382,8 +396,23 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   </section>
 </main>
 
+<div id="login">
+  <div class="loginbox">
+    <h1>My Finance</h1>
+    <p class="hint" id="login-load">Loading…</p>
+    <form id="login-form" class="formcard" novalidate hidden>
+      <h2>Sign in</h2>
+      <div class="field"><label for="l-email">Email</label><input type="text" id="l-email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+      <div class="field"><label for="l-pass">Password</label><input type="password" id="l-pass" autocomplete="current-password"></div>
+      <button class="btn" id="l-btn" type="submit">Sign in</button>
+    </form>
+    <p class="hint bad" id="login-msg" role="alert"></p>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 
+<script type="module" src="store.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -834,59 +863,55 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   show(location.hash.slice(1));
   renderAll();
 
-  /* data is kept on this phone (localStorage) */
-  var KEY = "myfinance.customers.v1", KEY_BK = "myfinance.lastBackup";
+  /* data lives in Firebase (online, with an offline copy on the phone) */
   var rows = [];
-  var storageOK = true;
-  try {
-    localStorage.setItem("myfinance.test", "1"); localStorage.removeItem("myfinance.test");
-    var raw = localStorage.getItem(KEY);
-    rows = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(rows)) rows = [];
-  } catch (e) { storageOK = false; rows = []; }
-  function persist() { localStorage.setItem(KEY, JSON.stringify(rows)); }
-  function merge(t, p) {
-    Object.keys(p).forEach(function (k) {
-      var v = p[k];
-      if (v && typeof v === "object" && !Array.isArray(v) && t[k] && typeof t[k] === "object") merge(t[k], v);
-      else t[k] = v;
-    });
-    return t;
+  var S = null;
+  var unsub = null;
+  var firstSnap = true;
+  var pendingWrites = false;
+  var KEY_BK = "myfinance.lastBackup";
+
+  function handleWriteError(e) {
+    toast(e && e.code === "permission-denied" ? "This account is not allowed to change data." : "Could not save. Check the connection and try again.");
   }
-  function write(fn) {
-    return new Promise(function (resolve, reject) {
-      var snap = JSON.stringify(rows), ok = false;
-      try { fn(); persist(); ok = true; }
-      catch (e) { rows = JSON.parse(snap); reject(e); }
-      if (ok) { refresh(); resolve(); }
-    });
-  }
+  // writes are queued by the database even without internet, so the screen does not wait for the server
+  function fire(p) { p.catch(handleWriteError); return Promise.resolve(); }
   col = {
-    add: function (d) {
-      return write(function () {
-        var o = JSON.parse(JSON.stringify(d));
-        o.id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        rows.push(o);
-      });
-    },
+    add: function (d) { return fire(S.add(d)); },
     doc: function (id) {
       return {
-        update: function (p) {
-          return write(function () {
-            var r = rows.filter(function (x) { return x.id === id; })[0];
-            if (!r) throw new Error("missing");
-            merge(r, JSON.parse(JSON.stringify(p)));
-          });
-        },
-        delete: function () {
-          return write(function () { rows = rows.filter(function (x) { return x.id !== id; }); });
-        }
+        update: function (p) { return fire(S.update(id, p)); },
+        delete: function () { return fire(S.remove(id)); }
       };
     }
   };
   function refresh() {
     customers = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     loaded = true; syncId(); renderAll(); renderBackup();
+  }
+  function netStatus() {
+    var on = navigator.onLine;
+    $("#status").textContent = "Daily Collection Manager · " + (!on ? "Offline" : pendingWrites ? "Syncing…" : "Online");
+    $("#dot").className = "dot" + (on && !pendingWrites ? " live" : "");
+  }
+  function loginMsg(t) { $("#login-msg").textContent = t || ""; }
+  function startData() {
+    if (unsub || !S) return;
+    firstSnap = true;
+    unsub = S.subscribe(function (list, meta) {
+      rows = list; pendingWrites = !!meta.pending;
+      if (firstSnap || meta.changed) refresh();
+      firstSnap = false; netStatus();
+    }, function (e) {
+      if (e && e.code === "permission-denied") {
+        loginMsg("This email is not allowed to open the app. Ask the owner to add it.");
+        S.signOut();
+      } else netStatus();
+    });
+  }
+  function stopData() {
+    if (unsub) { unsub(); unsub = null; }
+    rows = []; customers = []; loaded = false; renderAll();
   }
 
   /* backup + restore */
@@ -896,7 +921,6 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
   function renderBackup() {
     var el = $("#bk-last"); if (!el) return;
-    if (!storageOK) { el.textContent = "This browser is blocking storage, so nothing you enter will be saved. Open the file in Chrome."; el.className = "hint bad"; return; }
     var last = ""; try { last = localStorage.getItem(KEY_BK) || ""; } catch (e) {}
     if (!last) {
       el.textContent = customers.length ? "No backup taken yet. Download one today." : "Download a backup file after you add customers.";
@@ -938,7 +962,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         if (!Array.isArray(list)) throw new Error("bad");
         list.forEach(function (c) { if (!c || typeof c !== "object" || !c.name) throw new Error("bad"); });
         pending = list;
-        $("#bk-msg").textContent = "Replace the " + rows.length + " customers on this phone with " + list.length + " from the file?";
+        $("#bk-msg").textContent = "Add " + list.length + " customers from the file? Customers with the same ID are overwritten.";
         $("#bk-confirm").hidden = false;
       } catch (err) { pending = null; $("#bk-confirm").hidden = true; toast("This is not a My Finance backup file."); }
     };
@@ -946,22 +970,56 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   });
   $("#bk-no").addEventListener("click", function () { pending = null; $("#bk-confirm").hidden = true; $("#bk-file").value = ""; });
   $("#bk-yes").addEventListener("click", function () {
-    if (!pending) return;
-    var old = JSON.stringify(rows);
-    rows = pending.map(function (c, i) {
+    if (!pending || !S) return;
+    var list = pending.map(function (c, i) {
       var o = JSON.parse(JSON.stringify(c));
-      if (!o.id) o.id = "r" + Date.now().toString(36) + i;
+      o.id = String(o.id || ("r" + Date.now().toString(36) + i)).replace(/[\/]/g, "_");
       if (!o.paid) o.paid = {};
       if (!o.createdAt) o.createdAt = Date.now() + i;
       return o;
     });
-    try { persist(); } catch (err) { rows = JSON.parse(old); writeError(); return; }
+    var n = list.length;
+    fire(S.importAll(list));
     pending = null; $("#bk-confirm").hidden = true; $("#bk-file").value = "";
-    refresh(); toast("Backup restored.");
+    toast(n + " customers imported.");
   });
 
-  setStatus(storageOK);
-  refresh();
+  /* sign in */
+  function init() {
+    S = window.MFStore;
+    S.onAuth(function (u) {
+      $("#login-load").hidden = true;
+      if (u) { $("#login").hidden = true; $("#acct-email").textContent = u.email || ""; startData(); }
+      else { stopData(); $("#login-form").hidden = false; $("#login").hidden = false; }
+      netStatus();
+    });
+  }
+  if (window.MFStore) init();
+  else {
+    window.addEventListener("mfstore", init, { once: true });
+    setTimeout(function () {
+      if (!window.MFStore) {
+        $("#login-load").hidden = true;
+        loginMsg("Could not load the app. Connect to the internet and open the app again.");
+      }
+    }, 20000);
+  }
+  $("#login-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var em = $("#l-email").value.trim(), pw = $("#l-pass").value;
+    if (!em || !pw) { loginMsg("Enter your email and password."); return; }
+    var btn = $("#l-btn"); btn.disabled = true; loginMsg("");
+    S.signIn(em, pw).then(function () { $("#l-pass").value = ""; }).catch(function (err) {
+      var c = err && err.code;
+      loginMsg(c === "auth/network-request-failed" ? "No internet connection."
+        : c === "auth/too-many-requests" ? "Too many tries. Wait a few minutes and try again."
+        : "Wrong email or password.");
+    }).then(function () { btn.disabled = false; });
+  });
+  $("#logout").addEventListener("click", function () { if (S) S.signOut(); });
+  window.addEventListener("online", netStatus);
+  window.addEventListener("offline", netStatus);
+  netStatus();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register("sw.js").catch(function () {});

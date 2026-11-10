@@ -103,6 +103,11 @@ main { padding-block: 16px 40px; }
 }
 .tile .k { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.3; }
 .tile .v { margin: 0; font-size: clamp(22px, 7vw, 30px); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.rcust.exist { width: 100%; text-align: left; color: var(--fg); font: inherit; }
+#exist-res { display: grid; gap: 8px; margin-top: 8px; }
+.tile.tap { cursor: pointer; }
+.tile .go { color: var(--muted); font-size: 22px; }
+#lfilter .btn { width: 100%; margin-bottom: 10px; }
 .tile .v.good { color: var(--good); }
 .tile .v.warn { color: var(--warn); }
 
@@ -326,6 +331,11 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   <section id="view-add" aria-labelledby="tab-add" hidden>
     <form class="formcard" id="add-form" novalidate>
       <h2 id="form-title">Add Customer / Loan</h2>
+      <div class="field" id="exist-box">
+        <label for="f-exist">Existing Customer (மறுபடி loan வாங்குபவர்)</label>
+        <input type="text" id="f-exist" placeholder="பேர் அல்லது phone தேடுங்க" autocomplete="off">
+        <div id="exist-res"></div>
+      </div>
       <div class="field">
         <label for="f-id">Loan ID</label>
         <input type="text" id="f-id" autocomplete="off">
@@ -414,6 +424,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     <div class="formcard">
       <div class="lhead"><h2>Customer List</h2><span class="count" id="count"></span></div>
       <p class="helper">Customer-ஐ தேர்வு செய்து Edit, Info அல்லது Delete செய்யலாம்.</p>
+      <div id="lfilter"></div>
       <div class="field">
         <input type="text" class="search" id="search" placeholder="Search name or phone..." autocomplete="off" aria-label="Search customers">
       </div>
@@ -510,6 +521,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   var capital = [];
   var loaded = false;
   var query = "";
+  var listFilter = "all";
   var cur = "dashboard";
   var selectedId = null;
   var infoOpen = false;
@@ -585,7 +597,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       ["Cash in Hand", inr(cashInHand()), cashInHand() < 0 ? "warn" : ""]
     ];
     $("#tiles").innerHTML = tiles.map(function (t) {
-      return '<div class="tile"><p class="k">' + esc(t[0]) + '</p><p class="v ' + t[2] + '">' + esc(t[1]) + "</p></div>";
+      var f = t[0] === "Total Customers" ? "all" : t[0] === "Active Customers" ? "active" : t[0] === "Completed Customers" ? "done" : "";
+      return '<div class="tile' + (f ? " tap" : "") + '"' + (f ? ' data-lf="' + f + '"' : "") + '><p class="k">' + esc(t[0]) + '</p><p class="v ' + t[2] + '">' + esc(t[1]) + (f ? ' <span class="go">›</span>' : "") + "</p></div>";
     }).join("");
     $("#dash-empty").innerHTML = (loaded && !customers.length && col)
       ? '<div class="notice"><p>No customers yet. Add the first one and these numbers fill in.</p><button class="btn small" data-go="add">Add Customer</button></div>'
@@ -604,14 +617,19 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
 
   function renderList() {
-    $("#count").textContent = customers.length + (customers.length === 1 ? " customer" : " customers");
     var q = query.trim().toLowerCase();
-    var rows = customers.filter(function (c) {
+    var base = customers.filter(function (c) {
+      return listFilter === "all" || (listFilter === "done" ? isDone(c) : !isDone(c));
+    });
+    $("#count").textContent = base.length + (base.length === 1 ? " customer" : " customers");
+    $("#lfilter").innerHTML = listFilter === "all" ? "" :
+      '<button class="btn ghost small" data-lf="all" type="button">✕ ' + (listFilter === "done" ? "Completed மட்டும்" : "Active மட்டும்") + " (எல்லோரையும் காட்ட தொடுங்க)</button>";
+    var rows = base.filter(function (c) {
       if (!q) return true;
       return [c.name, c.phone, c.loanId, c.area, c.fatherName].join(" ").toLowerCase().indexOf(q) >= 0;
     });
     if (!rows.length) {
-      var msg = customers.length ? "No customers match." : (col ? "No customers yet." : "Saved data is not available in this view.");
+      var msg = base.length ? "No customers match." : (customers.length && listFilter !== "all") ? (listFilter === "done" ? "Completed customers இன்னும் இல்லை." : "Active customers இல்லை.") : customers.length ? "No customers match." : (col ? "No customers yet." : "Saved data is not available in this view.");
       $("#list").innerHTML = '<div class="empty"><p>' + msg + "</p>" +
         (!customers.length && col ? '<button class="btn small" data-go="add">Add Customer</button>' : "") + "</div>";
       return;
@@ -932,6 +950,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         }
         renderCollection(); return;
       }
+      var lf = e.target.closest("[data-lf]");
+      if (lf) { listFilter = lf.getAttribute("data-lf"); query = ""; $("#search").value = ""; if (cur === "list") renderList(); else go("list"); return; }
       var mr = e.target.closest("[data-month]");
       if (mr) { var mk = mr.getAttribute("data-month"); repOpen = repOpen === mk ? null : mk; renderReport(); return; }
       var o = e.target.closest("[data-open]");
@@ -970,6 +990,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   });
   document.addEventListener("input", function (e) { if (e.target.matches("[data-amt]")) draft.amount = e.target.value; });
   document.addEventListener("change", function (e) { if (e.target.matches("[data-mode]")) draft.mode = e.target.value; });
+  $("#tab-list").addEventListener("click", function () { listFilter = "all"; });
   $("#search").addEventListener("input", function (e) { query = e.target.value; renderList(); });
   function setCDate(v) {
     var t = today();
@@ -1004,13 +1025,46 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#f-first").value = (ld && weeks) ? dmy(addDays(ld, mode === "daily" ? 1 : 7)) : "";
     $("#f-end").value = (ld && weeks) ? dmy(addDays(ld, weeks * 7)) : "";
   }
+  /* existing customer search */
+  var existList = [];
+  function renderExist() {
+    var q = $("#f-exist").value.trim().toLowerCase(), box = $("#exist-res");
+    existList = [];
+    if (!q) { box.innerHTML = ""; return; }
+    var seen = {};
+    customers.forEach(function (c) {
+      var key = (c.phone || "") + "|" + String(c.name || "").trim().toLowerCase();
+      if (!([c.name, c.phone, c.fatherName].join(" ").toLowerCase().indexOf(q) >= 0)) return;
+      var e = seen[key];
+      if (!e) { e = seen[key] = { c: c, n: 0, active: false }; existList.push(e); }
+      e.n++; if (!isDone(c)) e.active = true;
+    });
+    existList = existList.slice(0, 8);
+    box.innerHTML = existList.length ? existList.map(function (e, i) {
+      return '<button class="rcust exist" type="button" data-ex="' + i + '"><div><b>' + esc(e.c.name) + (e.c.fatherName ? " S/o " + esc(e.c.fatherName) : "") + "</b><small>" + esc(e.c.phone || "") + (e.c.area ? " · " + esc(e.c.area) : "") +
+        "</small></div><div class=\"ramt\"><small>" + e.n + (e.n === 1 ? " loan" : " loans") + "</small><b class=\"" + (e.active ? "warnt" : "") + "\">" + (e.active ? "Active loan இருக்கு" : "Completed") + "</b></div></button>";
+    }).join("") : '<p class="hint">பொருத்தமான customer இல்லை.</p>';
+  }
+  $("#f-exist").addEventListener("input", renderExist);
+  $("#exist-res").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ex]"); if (!b) return;
+    var c = existList[+b.getAttribute("data-ex")].c;
+    $("#f-name").value = c.name || ""; $("#f-father").value = c.fatherName || "";
+    $("#f-phone").value = c.phone || ""; $("#f-area").value = c.area || "";
+    $("#f-exist").value = ""; $("#exist-res").innerHTML = ""; existList = [];
+    syncId(); toast(c.name + " எடுக்கப்பட்டது. Loan details போடுங்க.");
+    $("#f-loan").focus();
+  });
+
   function setFormMode() {
+    $("#exist-box").hidden = !!editingId;
     $("#form-title").textContent = editingId ? "Edit Customer / Loan" : "Add Customer / Loan";
     $("#add-btn").textContent = editingId ? "Update Customer" : "Save Customer";
     $("#clear-btn").textContent = editingId ? "Cancel" : "Clear";
   }
   function resetForm() {
     $("#add-form").reset();
+    $("#exist-res").innerHTML = "";
     $("#f-ldate").value = today();
     idTouched = false; syncId(); calc(); setFormMode();
   }

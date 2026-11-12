@@ -220,6 +220,10 @@ main { padding-block: 16px 40px; }
 /* payment history */
 .subh { margin: 6px 0 0; font-size: 17px; font-weight: 600; }
 .ptable { display: grid; gap: 8px; }
+.ptable.six .prow { grid-template-columns: 0.45fr 1.1fr 1.3fr 0.95fr 1.05fr 0.85fr; gap: 3px; }
+.ptable.six .prow span { padding: 8px 2px; font-size: 11px; text-align: center; overflow-wrap: normal; word-break: normal; }
+.ptable.six .prow:not(.phead) span:nth-child(2), .ptable.six .prow:not(.phead) span:nth-child(3) { white-space: nowrap; }
+.ptable.six .prow span.lt { color: var(--warn); font-weight: 600; }
 .plate { margin: -2px 0 2px; padding: 7px 10px; border-radius: 10px; font-size: 13px; color: var(--warn); background: var(--card); border: 1px dashed var(--line); }
 .prow { display: grid; grid-template-columns: 0.7fr 1.5fr 1fr 1.2fr; gap: 8px; }
 .prow span { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
@@ -650,21 +654,29 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var days = Object.keys(c.paid || {}).filter(function (d) { var e = c.paid[d]; return (+e.cash || 0) + (+e.upi || 0) > 0; }).sort();
     var h = '<h3 class="subh">Payment History</h3>';
     if (!days.length) return h + '<p class="meta">No payments yet.</p>';
-    var run = 0, inst = +c.installment || 0, step = c.scheme === "daily" ? 1 : 7, n = count(c), tdue = +c.totalDue || 0;
+    var inst = +c.installment || 0, step = c.scheme === "daily" ? 1 : 7, n = count(c);
     function gap(a, b) { var x = parts(a), y = parts(b); return Math.round((Date.UTC(y[0], y[1] - 1, y[2]) - Date.UTC(x[0], x[1] - 1, x[2])) / 86400000); }
-    h += '<div class="ptable"><div class="prow phead"><span>S.No</span><span>Date</span><span>EMI</span><span>Total Repaid</span></div>';
+    function sd(x) { var q = parts(x); return pad(q[2]) + "/" + pad(q[1]) + "/" + String(q[0]).slice(2); }
+    var run = 0, recs = [], anyLate = false;
     days.forEach(function (d, i) {
-      var e = c.paid[d], a = (+e.cash || 0) + (+e.upi || 0), before = run, late = null, nlate = 0;
+      var e = c.paid[d], a = (+e.cash || 0) + (+e.upi || 0), before = run, due = null, late = 0;
       run += a;
-      if (inst > 0 && c.firstDate) {
-        var k0 = Math.floor(before / inst), k1 = run >= tdue ? n : Math.min(n, Math.floor(run / inst));
-        for (var k = k0; k < k1; k++) {
-          var due = addDays(c.firstDate, step * k), g = gap(due, d);
-          if (g > 0) { nlate++; if (!late) late = { due: due, days: g }; }
-        }
+      if (inst > 0 && c.firstDate && n > 0) {
+        var k = Math.min(n - 1, Math.floor(before / inst));
+        due = addDays(c.firstDate, step * k);
+        late = Math.max(0, gap(due, d));
+        if (late > 0) anyLate = true;
       }
-      h += '<div class="prow"><span>' + (i + 1) + "</span><span>" + fmtD(d) + "</span><span>" + inr(a) + "</span><span>" + inr(run) + "</span></div>";
-      if (late) h += '<div class="plate">Due date: ' + esc(fmtD(late.due)) + " · <b>" + late.days + (late.days === 1 ? " day" : " days") + " late</b>" + (nlate > 1 ? " (" + nlate + " தவணை)" : "") + "</div>";
+      recs.push({ i: i + 1, d: d, a: a, run: run, due: due, late: late });
+    });
+    if (!anyLate) {
+      h += '<div class="ptable"><div class="prow phead"><span>S.No</span><span>Date</span><span>EMI</span><span>Total Repaid</span></div>';
+      recs.forEach(function (r) { h += '<div class="prow"><span>' + r.i + "</span><span>" + fmtD(r.d) + "</span><span>" + inr(r.a) + "</span><span>" + inr(r.run) + "</span></div>"; });
+      return h + "</div>";
+    }
+    h += '<div class="ptable six"><div class="prow phead"><span>S.No</span><span>Due Date</span><span>Collection Date</span><span>EMI</span><span>Total Repaid</span><span>Delay Days</span></div>';
+    recs.forEach(function (r) {
+      h += '<div class="prow"><span>' + r.i + "</span><span>" + (r.due ? sd(r.due) : "—") + "</span><span>" + sd(r.d) + "</span><span>" + inr(r.a) + "</span><span>" + inr(r.run) + '</span><span class="' + (r.late ? "lt" : "") + '">' + (r.late ? r.late + (r.late === 1 ? " day" : " days") : "—") + "</span></div>";
     });
     return h + "</div>";
   }

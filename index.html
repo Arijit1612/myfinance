@@ -899,6 +899,15 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         '<span class="cl"><span class="cname">' + esc(c.name) + '</span><span class="csub">' + sub + "</span></span>" +
         '<span class="cr"><span class="camt">' + inr(r.due) + "</span>" + st + "</span></button>";
       if (colOpen === c.id) {
+        if (r.tot > 0) {
+          h += '<div class="panel"><p class="hint">இந்த தேதி entry-ஐ மாத்தலாம்:</p>' +
+            '<div class="field"><label for="ecash">Cash (₹)</label><input type="number" inputmode="numeric" min="0" id="ecash" data-cash value="' + esc(draft.cash) + '"></div>' +
+            '<div class="field"><label for="eupi">GPay / UPI (₹)</label><input type="number" inputmode="numeric" min="0" id="eupi" data-upi value="' + esc(draft.upi) + '"></div>' +
+            '<div class="field"><label for="edate">Collection Date</label><input type="date" id="edate" data-edate max="' + today() + '" value="' + esc(draft.date || cdate) + '"></div>' +
+            '<button class="btn" data-act="update" data-id="' + id + '">Update collection</button>' +
+            '<p class="hint"><button class="chip" data-act="clear" data-id="' + id + '">Clear this date\'s entry</button></p></div>';
+          return h + "</article>";
+        }
         h += '<div class="panel">' +
           '<div class="field"><label for="amt">Amount collected (₹)</label>' +
           '<input type="number" inputmode="numeric" min="1" id="amt" data-amt value="' + esc(draft.amount) + '"></div>' +
@@ -968,7 +977,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
           colOpen = rid;
           var rc = byId(rid), rp = paidOn(rc, cdate), rt = rp.cash + rp.upi, rd = dueToday(rc, cdate);
           var def = rt === 0 ? rd : Math.max(rd - rt, 0);
-          draft = { amount: def ? String(Math.min(def, pendingOf(rc))) : "", mode: "cash" };
+          draft = { amount: def ? String(Math.min(def, pendingOf(rc))) : "", mode: "cash", cash: rp.cash ? String(rp.cash) : "", upi: rp.upi ? String(rp.upi) : "", date: cdate };
         }
         renderCollection(); return;
       }
@@ -1005,12 +1014,28 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       a.disabled = true;
       col.doc(id).update(patch).then(function () { colOpen = null; toast(inr(amt) + " saved for " + c.name + (cdate === today() ? "" : " on " + dmy(cdate)) + "."); renderCollection(); })
         .catch(function (err) { a.disabled = false; writeError(err); });
+    } else if (act === "update" && c) {
+      var ec = Math.round(+draft.cash || 0), eu = Math.round(+draft.upi || 0), cur0 = paidOn(c, cdate), pt = {};
+      var nd = draft.date || cdate, moved = nd !== cdate;
+      if (ec < 0 || eu < 0) { toast("Amount சரியா போடுங்க."); return; }
+      if (nd > today()) { toast("எதிர்கால தேதி வேண்டாம்."); return; }
+      if (ec + eu > pendingOf(c) + cur0.cash + cur0.upi) { toast("Amount balance-ஐ விட அதிகம்."); return; }
+      pt.paid = {};
+      if (moved) {
+        var tg = paidOn(c, nd);
+        pt.paid[cdate] = { cash: 0, upi: 0 };
+        pt.paid[nd] = { cash: tg.cash + ec, upi: tg.upi + eu };
+      } else pt.paid[cdate] = { cash: ec, upi: eu };
+      a.disabled = true;
+      col.doc(id).update(pt).then(function () { colOpen = null; toast(moved ? "Entry " + dmy(nd) + " தேதிக்கு மாற்றப்பட்டது." : ec + eu > 0 ? "Entry updated." : "Entry cleared."); renderCollection(); })
+        .catch(function (err) { a.disabled = false; writeError(err); });
     } else if (act === "clear" && c) {
       var p2 = { paid: {} }; p2.paid[cdate] = { cash: 0, upi: 0 };
       col.doc(id).update(p2).then(function () { colOpen = null; toast("Entry cleared."); renderCollection(); }).catch(writeError);
     }
   });
-  document.addEventListener("input", function (e) { if (e.target.matches("[data-amt]")) draft.amount = e.target.value; });
+  document.addEventListener("input", function (e) { if (e.target.matches("[data-amt]")) draft.amount = e.target.value; if (e.target.matches("[data-cash]")) draft.cash = e.target.value; if (e.target.matches("[data-upi]")) draft.upi = e.target.value; });
+  document.addEventListener("change", function (e) { if (e.target.matches("[data-edate]")) draft.date = e.target.value; });
   document.addEventListener("change", function (e) { if (e.target.matches("[data-mode]")) draft.mode = e.target.value; });
   $("#tab-list").addEventListener("click", function () { listFilter = "all"; });
   $("#search").addEventListener("input", function (e) { query = e.target.value; renderList(); });

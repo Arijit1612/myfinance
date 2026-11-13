@@ -864,17 +864,37 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     if (!c.firstDate || c.firstDate > t) return false;
     return c.scheme === "daily" || weekday(c.firstDate) === weekday(t);
   }
+  /* installment due on date t paid on a different date? -> {date, amt} */
+  function settledElsewhere(c, t) {
+    var inst = +c.installment || 0, step = c.scheme === "daily" ? 1 : 7, n = count(c), td = +c.totalDue || 0;
+    if (!inst || !c.firstDate || !isDueToday(c, t)) return null;
+    var a = parts(c.firstDate), b = parts(t);
+    var k = Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000 / step);
+    if (k < 0 || k >= n) return null;
+    var need = Math.min((k + 1) * inst, td), run = 0, ds = Object.keys(c.paid || {}).sort();
+    for (var i = 0; i < ds.length; i++) {
+      var e = c.paid[ds[i]], v = (+e.cash || 0) + (+e.upi || 0);
+      if (v <= 0) continue;
+      run += v;
+      if (run >= need) return { date: ds[i], amt: Math.min(inst, td - k * inst) };
+    }
+    return null;
+  }
+  function dmyS(x) { var q = parts(x); return pad(q[2]) + "/" + pad(q[1]) + "/" + String(q[0]).slice(2); }
   function renderCollection() {
     var t = cdate, q = cquery.trim().toLowerCase();
     var rows = [], target = 0, got = 0, left = 0;
     customers.forEach(function (c) {
       var p = paidOn(c, t), tot = p.cash + p.upi, due = dueToday(c, t);
-      var listed = isDueToday(c, t) && (!isDone(c) || tot > 0);
+      var se = tot === 0 ? settledElsewhere(c, t) : null;
+      if (se) due = se.amt;
+      var listed = isDueToday(c, t) && (!isDone(c) || tot > 0 || !!se);
+      if (!listed && tot > 0) due = tot;
       got += tot;
-      if (listed) { target += due; left += Math.max(due - tot, 0); }
+      if (listed && isDueToday(c, t)) { target += due; if (!se) left += Math.max(due - tot, 0); }
       var match = !q || [c.name, c.phone, c.loanId, c.area, c.fatherName].join(" ").toLowerCase().indexOf(q) >= 0;
-      var visible = q ? (match && (!isDone(c) || tot > 0)) : listed;
-      if (visible) rows.push({ c: c, due: due, tot: tot, rank: tot > 0 ? (tot >= due ? 2 : 1) : 0 });
+      var visible = q ? (match && (!isDone(c) || tot > 0)) : (listed || tot > 0);
+      if (visible) rows.push({ c: c, due: due, tot: tot, se: se, rank: se ? 2 : tot > 0 ? (tot >= due ? 2 : 1) : 0 });
     });
     rows.sort(function (a, b) { return a.rank - b.rank || (parseInt(a.c.loanId, 10) || 0) - (parseInt(b.c.loanId, 10) || 0); });
     var pct = target ? Math.min(100, Math.round(got / target * 100)) : 0;
@@ -891,7 +911,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     }
     $("#clist").innerHTML = rows.map(function (r) {
       var c = r.c, id = esc(c.id);
-      var st = r.rank === 2 ? '<span class="st s2">✓ Collected ' + inr(r.tot) + "</span>"
+      var st = r.se ? '<span class="st s2">✓ Paid ' + esc(dmyS(r.se.date)) + (r.se.date > t ? " (late)" : "") + "</span>"
+        : r.rank === 2 ? '<span class="st s2">✓ Collected ' + inr(r.tot) + "</span>"
         : r.rank === 1 ? '<span class="st s1">Collected ' + inr(r.tot) + "</span>"
         : '<span class="st s0">Pending</span>';
       var sub = ["Loan ID: " + esc(c.loanId || ""), esc(c.area || ""), isDueToday(c, t) ? "" : "Not due on this date"].filter(Boolean).join(" · ");
@@ -899,6 +920,10 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         '<span class="cl"><span class="cname">' + esc(c.name) + '</span><span class="csub">' + sub + "</span></span>" +
         '<span class="cr"><span class="camt">' + inr(r.due) + "</span>" + st + "</span></button>";
       if (colOpen === c.id) {
+        if (r.se) {
+          h += '<div class="panel"><p class="hint">இந்த தவணை ' + esc(fmtD(r.se.date)) + ' அன்று கட்டப்பட்டது. அந்த தேதியில் entry-ஐ மாத்தலாம்.</p></div>';
+          return h + "</article>";
+        }
         if (r.tot > 0) {
           h += '<div class="panel"><p class="hint">இந்த தேதி entry-ஐ மாத்தலாம்:</p>' +
             '<div class="field"><label for="ecash">Cash (₹)</label><input type="number" inputmode="numeric" min="0" id="ecash" data-cash value="' + esc(draft.cash) + '"></div>' +

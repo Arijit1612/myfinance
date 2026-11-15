@@ -378,7 +378,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         <input type="text" id="f-rate" class="calc" readonly tabindex="-1">
       </div>
       <div class="field">
-        <label for="f-weeks">Loan period (weeks) *</label>
+        <label for="f-weeks" id="l-period">Loan period (weeks) *</label>
         <select id="f-weeks">
           <option value="4">4 Weeks</option><option value="5">5 Weeks</option><option value="6">6 Weeks</option>
           <option value="8" selected>8 Weeks</option><option value="10">10 Weeks</option><option value="12">12 Weeks</option>
@@ -544,7 +544,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   function paidOn(c, d) { var e = (c.paid || {})[d] || {}; return { cash: +e.cash || 0, upi: +e.upi || 0 }; }
   function pendingOf(c) { return Math.max((+c.totalDue || 0) - sum(c), 0); }
   function isDone(c) { return pendingOf(c) <= 0; }
-  function count(c) { return c.scheme === "daily" ? (+c.weeks || 0) * 7 : (+c.weeks || 0); }
+  function count(c) { return c.scheme === "daily" ? (+c.days || (+c.weeks || 0) * 7) : (+c.weeks || 0); }
   function paidCount(c) {
     var n = count(c);
     if (isDone(c)) return n;
@@ -697,7 +697,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         ["Total collection", inr(sum(c)), sum(c) > 0 ? "good" : ""],
         ["Balance", inr(pendingOf(c)), pendingOf(c) > 0 ? "warn" : "good"],
         ["Due amount", inr(c.installment) + (c.scheme === "daily" ? " / day" : " / week"), ""],
-        ["Period", (c.weeks || "") + " Weeks · " + (c.scheme === "daily" ? "Daily" : "Weekly"), ""],
+        ["Period", c.scheme === "daily" ? count(c) + " Days · Daily" : (c.weeks || "") + " Weeks · Weekly", ""],
         ["Total installments", pl(count(c)), ""],
         ["Installments paid", pl(paidCount(c)), paidCount(c) > 0 ? "good" : ""],
         ["Remaining installments", pl(count(c) - paidCount(c)), count(c) - paidCount(c) > 0 ? "warn" : "good"],
@@ -1086,16 +1086,31 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     return pad(max + 1);
   }
   function syncId() { if (!idTouched && !editingId) $("#f-id").value = nextId(); }
+  function buildPeriod(mode, val) {
+    var sel = $("#f-weeks"), opts;
+    if (mode === "daily") {
+      $("#l-period").textContent = "Loan period (days) *";
+      opts = [50, 100];
+    } else {
+      $("#l-period").textContent = "Loan period (weeks) *";
+      opts = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50];
+    }
+    val = +val || (mode === "daily" ? 50 : 8);
+    if (opts.indexOf(val) < 0) { opts.push(val); opts.sort(function (a, b) { return a - b; }); }
+    sel.innerHTML = opts.map(function (o) { return '<option value="' + o + '">' + o + (mode === "daily" ? " Days" : " Weeks") + "</option>"; }).join("");
+    sel.value = String(val);
+  }
+  $("#f-mode").addEventListener("change", function () { buildPeriod($("#f-mode").value); });
   function calc() {
     var loan = +$("#f-loan").value || 0, intr = +$("#f-interest").value || 0;
     var weeks = +$("#f-weeks").value || 0, mode = $("#f-mode").value, ld = $("#f-ldate").value;
     $("#f-disb").value = loan ? String(loan - intr) : "";
     $("#f-rate").value = loan ? (intr / loan * 100).toFixed(2) + "%" : "";
     $("#f-total").value = loan ? String(loan) : "";
-    var n = mode === "daily" ? weeks * 7 : weeks;
+    var n = weeks, span = mode === "daily" ? weeks : weeks * 7;
     $("#f-due").value = (loan && n) ? String(Math.ceil(loan / n)) : "";
     $("#f-first").value = (ld && weeks) ? dmy(addDays(ld, mode === "daily" ? 1 : 7)) : "";
-    $("#f-end").value = (ld && weeks) ? dmy(addDays(ld, weeks * 7)) : "";
+    $("#f-end").value = (ld && weeks) ? dmy(addDays(ld, span)) : "";
   }
   /* existing customer search */
   var existList = [];
@@ -1136,6 +1151,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
   function resetForm() {
     $("#add-form").reset();
+    buildPeriod("weekly");
     $("#exist-res").innerHTML = "";
     $("#f-ldate").value = today();
     idTouched = false; syncId(); calc(); setFormMode();
@@ -1145,11 +1161,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#f-id").value = c.loanId || ""; $("#f-name").value = c.name || ""; $("#f-father").value = c.fatherName || "";
     $("#f-phone").value = c.phone || ""; $("#f-area").value = c.area || ""; $("#f-loan").value = c.loanAmount || "";
     $("#f-interest").value = c.interest == null ? "" : c.interest;
-    var sel = $("#f-weeks");
-    if (!sel.querySelector('option[value="' + c.weeks + '"]')) {
-      var o = document.createElement("option"); o.value = c.weeks; o.textContent = c.weeks + " Weeks"; sel.appendChild(o);
-    }
-    sel.value = String(c.weeks); $("#f-mode").value = c.scheme || "weekly";
+    $("#f-mode").value = c.scheme || "weekly";
+    buildPeriod($("#f-mode").value, $("#f-mode").value === "daily" ? count(c) : c.weeks);
     $("#f-ldate").value = c.loanDate || today(); $("#f-notes").value = c.notes || "";
     calc(); setFormMode(); go("add");
   }
@@ -1178,12 +1191,12 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     if (!(intr >= 0)) { toast("Enter the interest amount."); $("#f-interest").focus(); return; }
     if (intr >= loan) { toast("Interest must be less than the loan amount."); $("#f-interest").focus(); return; }
     if (!ld) { toast("Choose the loan date."); return; }
-    var n = mode === "daily" ? weeks * 7 : weeks;
+    var n = weeks, span = mode === "daily" ? weeks : weeks * 7;
     var doc = {
       loanId: loanId, name: name, fatherName: $("#f-father").value.trim(), phone: $("#f-phone").value.trim(), area: $("#f-area").value.trim(),
       loanAmount: loan, interest: intr, disbursed: loan - intr, rate: Math.round(intr / loan * 10000) / 100,
-      weeks: weeks, scheme: mode, installment: Math.ceil(loan / n), totalDue: loan,
-      loanDate: ld, firstDate: addDays(ld, mode === "daily" ? 1 : 7), endDate: addDays(ld, weeks * 7),
+      weeks: mode === "daily" ? Math.ceil(weeks / 7) : weeks, days: mode === "daily" ? weeks : null, scheme: mode, installment: Math.ceil(loan / n), totalDue: loan,
+      loanDate: ld, firstDate: addDays(ld, mode === "daily" ? 1 : 7), endDate: addDays(ld, span),
       notes: $("#f-notes").value.trim()
     };
     var btn = $("#add-btn"); btn.disabled = true;
@@ -1284,10 +1297,10 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     renderBackup(); toast("Backup downloaded.");
   });
   $("#bk-csv").addEventListener("click", function () {
-    var head = ["Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Weeks", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Notes"];
+    var head = ["Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Period", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Notes"];
     var lines = [head.map(csvCell).join(",")];
     customers.slice().sort(function (a, b) { return (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); }).forEach(function (c) {
-      lines.push([c.loanId, c.name, c.fatherName, c.phone, c.area, c.loanAmount, c.interest, c.disbursed, c.scheme, c.weeks, c.installment, c.totalDue,
+      lines.push([c.loanId, c.name, c.fatherName, c.phone, c.area, c.loanAmount, c.interest, c.disbursed, c.scheme, (c.scheme === "daily" ? count(c) + " days" : c.weeks + " weeks"), c.installment, c.totalDue,
         c.loanDate, c.firstDate, c.endDate, sum(c), pendingOf(c), c.notes].map(csvCell).join(","));
     });
     saveFile("my-finance-customers-" + today() + ".csv", "﻿" + lines.join("\r\n"), "text/csv");

@@ -81,6 +81,12 @@ button { cursor: pointer; }
 .top .wrap { padding-block: 16px 12px; }
 .top h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .top .sub { margin: 2px 0 0; color: var(--hdr-muted); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.acctrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.acct { display: flex; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: 3px; flex: none; }
+.acct button { border: 0; background: transparent; color: var(--hdr-fg); border-radius: 999px; padding: 8px 16px; font-weight: 600; font-size: 14px; }
+.acct button[aria-pressed="true"] { background: #fff; color: #1b2644; }
+body[data-acct="aa"] { --hdr-bg: #0e3b38; --hdr-muted: #a6d1cc; }
+body[data-acct="aa"] .acct button[aria-pressed="true"] { color: #0e3b38; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
 .dot.live { background: var(--good); }
 .tabs { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; position: relative; scrollbar-width: none; }
@@ -267,7 +273,13 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 <body>
 <header class="top">
   <div class="wrap">
-    <h1>Venus Finance</h1>
+    <div class="acctrow">
+      <h1 id="app-title">Venus Finance</h1>
+      <div class="acct" role="group" aria-label="Account">
+        <button type="button" data-acct="venus" aria-pressed="true">Venus</button>
+        <button type="button" data-acct="aa" aria-pressed="false">AA</button>
+      </div>
+    </div>
     <p class="sub"><span class="dot" id="dot"></span><span id="status">Daily Collection Manager · Offline</span></p>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-dashboard" data-view="dashboard" aria-selected="true">Dashboard</button>
@@ -524,6 +536,17 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   var col = null;
   var customers = [];
   var capital = [];
+  var KEY_ACCT = "mf.acct";
+  var ACCTS = { venus: "Venus Finance", aa: "AA Finance" };
+  var acct = "venus";
+  try { var sa = localStorage.getItem(KEY_ACCT); if (sa === "aa" || sa === "venus") acct = sa; } catch (e) {}
+  function acctOf(x) { return x.acct === "aa" ? "aa" : "venus"; }
+  function applyAcct() {
+    document.body.setAttribute("data-acct", acct);
+    $("#app-title").textContent = ACCTS[acct];
+    document.title = ACCTS[acct];
+    Array.prototype.forEach.call(document.querySelectorAll(".acct button"), function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-acct") === acct ? "true" : "false"); });
+  }
   var loaded = false;
   var query = "";
   var listFilter = "all";
@@ -772,7 +795,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var amt = +$("#cap-amt").value, d = $("#cap-date").value || today();
     if (!(amt > 0)) { toast("Amount போடுங்க."); return; }
     if (d > today()) { toast("எதிர்கால தேதி வேண்டாம்."); return; }
-    col.add({ kind: "capital", type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
+    col.add({ kind: "capital", acct: acct, type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
     $("#cap-amt").value = ""; $("#cap-note").value = "";
     toast("Capital saved.");
   });
@@ -1145,7 +1168,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 
   function setFormMode() {
     $("#exist-box").hidden = !!editingId;
-    $("#form-title").textContent = editingId ? "Edit Customer / Loan" : "Add Customer / Loan";
+    $("#form-title").textContent = (editingId ? "Edit Customer / Loan" : "Add Customer / Loan") + " · " + (acct === "aa" ? "AA" : "Venus");
     $("#add-btn").textContent = editingId ? "Update Customer" : "Save Customer";
     $("#clear-btn").textContent = editingId ? "Cancel" : "Clear";
   }
@@ -1201,6 +1224,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     };
     var btn = $("#add-btn"); btn.disabled = true;
     var wasEditing = editingId;
+    if (!wasEditing) doc.acct = acct;
     var job;
     if (wasEditing) job = col.doc(wasEditing).update(doc);
     else { doc.paid = {}; doc.createdAt = Date.now(); job = col.add(doc); }
@@ -1239,10 +1263,26 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   };
   function refresh() {
     var sorted = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-    customers = sorted.filter(function (x) { return x.kind !== "capital"; });
-    capital = sorted.filter(function (x) { return x.kind === "capital"; });
+    customers = sorted.filter(function (x) { return x.kind !== "capital" && acctOf(x) === acct; });
+    capital = sorted.filter(function (x) { return x.kind === "capital" && acctOf(x) === acct; });
     loaded = true; syncId(); renderAll(); renderBackup();
   }
+  Array.prototype.forEach.call(document.querySelectorAll(".acct button"), function (b) {
+    b.addEventListener("click", function () {
+      var v = b.getAttribute("data-acct");
+      if (v === acct) return;
+      acct = v;
+      try { localStorage.setItem(KEY_ACCT, acct); } catch (e) {}
+      applyAcct();
+      editingId = null; colOpen = null; repOpen = null; capConfirm = null; listFilter = "all"; query = "";
+      $("#search").value = "";
+      resetForm();
+      refresh();
+      if (cur === "customer") go("dashboard");
+      toast(ACCTS[acct] + " தேர்ந்தெடுக்கப்பட்டது.");
+    });
+  });
+  applyAcct();
   function netStatus() {
     var on = navigator.onLine;
     $("#status").textContent = "Daily Collection Manager · " + (!on ? "Offline" : pendingWrites ? "Syncing…" : "Online");
@@ -1297,13 +1337,13 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     renderBackup(); toast("Backup downloaded.");
   });
   $("#bk-csv").addEventListener("click", function () {
-    var head = ["Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Period", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Notes"];
+    var head = ["Account", "Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Period", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Notes"];
     var lines = [head.map(csvCell).join(",")];
     customers.slice().sort(function (a, b) { return (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); }).forEach(function (c) {
-      lines.push([c.loanId, c.name, c.fatherName, c.phone, c.area, c.loanAmount, c.interest, c.disbursed, c.scheme, (c.scheme === "daily" ? count(c) + " days" : c.weeks + " weeks"), c.installment, c.totalDue,
+      lines.push([acct === "aa" ? "AA" : "Venus", c.loanId, c.name, c.fatherName, c.phone, c.area, c.loanAmount, c.interest, c.disbursed, c.scheme, (c.scheme === "daily" ? count(c) + " days" : c.weeks + " weeks"), c.installment, c.totalDue,
         c.loanDate, c.firstDate, c.endDate, sum(c), pendingOf(c), c.notes].map(csvCell).join(","));
     });
-    saveFile("my-finance-customers-" + today() + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
+    saveFile("my-finance-" + acct + "-customers-" + today() + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
     toast("Excel file downloaded.");
   });
   var pending = null;

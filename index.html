@@ -1173,7 +1173,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       else if ((parseInt(c.loanId, 10) || 0) < (parseInt(groups[k].rep.loanId, 10) || 0)) groups[k].rep = c;
       if (!q || hay(c).indexOf(q) >= 0) groups[k].hit = true;
     });
-    refList = order.filter(function (k) { return groups[k].hit; }).map(function (k) { return groups[k].rep; }).slice(0, 60);
+    refList = order.filter(function (k) { return groups[k].hit; }).map(function (k) { return groups[k].rep; }).sort(function (a, b) { return (parseInt(b.loanId, 10) || 0) - (parseInt(a.loanId, 10) || 0); }).slice(0, 60);
     box.innerHTML = refList.length ? refList.map(function (c, i) {
       return '<article class="cust" data-rf="' + i + '"><div class="head"><div><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p><h3>" + esc(c.name) + "</h3></div></div></article>";
     }).join("") : '<p class="hint">பொருத்தமான customer இல்லை.</p>';

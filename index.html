@@ -1165,7 +1165,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   function renderRef() {
     var q = $("#ref-q").value.trim().toLowerCase(), box = $("#ref-res");
     var groups = {}, order = [];
-    function mk(c) { return (c.phone || "") + "|" + String(c.name || "").trim().toLowerCase(); }
+    function mk(c) { return String(c.phone || "").replace(/\D/g, "").slice(-10) + "|" + String(c.name || "").trim().toLowerCase(); }
     function hay(c) { return [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase(); }
     customers.forEach(function (c) {
       var k = mk(c);

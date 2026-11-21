@@ -112,6 +112,14 @@ main { padding-block: 16px 40px; }
 .rcust.exist { width: 100%; text-align: left; color: var(--fg); font: inherit; }
 #exist-res { display: grid; gap: 8px; margin-top: 8px; }
 .tile.tap { cursor: pointer; }
+.refrow { display: flex; gap: 8px; align-items: center; }
+.refrow input { flex: 1; min-width: 0; }
+.refrow .btn { flex: none; white-space: nowrap; }
+#refov { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; padding: 16px; }
+#refov[hidden] { display: none; }
+#refov .rtop { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+#refov .rtop input { flex: 1; min-width: 0; }
+#ref-res { display: grid; gap: 8px; }
 .tile .go { color: var(--muted); font-size: 22px; }
 #lfilter .btn { width: 100%; margin-bottom: 10px; }
 .tile .v.good { color: var(--good); }
@@ -432,8 +440,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       </div>
       <div class="field">
         <label for="f-ref">Reference (யார் சொல்லி வந்தார்)</label>
-        <input type="text" id="f-ref" list="ref-list" placeholder="Optional" autocomplete="off">
-        <datalist id="ref-list"></datalist>
+        <div class="refrow"><input type="text" id="f-ref" placeholder="Optional · பேர் type செய்யலாம்" autocomplete="off"><button type="button" class="btn small" id="ref-find">🔍 தேடு</button></div>
       </div>
       <div class="field">
         <label for="f-notes">Notes (optional)</label>
@@ -523,6 +530,10 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 
 <div class="toast" id="toast" hidden></div>
 
+<div id="refov" hidden>
+  <div class="rtop"><input type="search" id="ref-q" placeholder="பேர் / phone / Loan ID தேடுங்க" autocomplete="off"><button type="button" class="btn small" id="ref-close">✕ மூடு</button></div>
+  <div id="ref-res"></div>
+</div>
 <script type="module" src="store.js"></script>
 <script>
 (function () {
@@ -1148,6 +1159,27 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#f-first").value = (ld && weeks) ? dmy(addDays(ld, mode === "daily" ? 1 : 7)) : "";
     $("#f-end").value = (ld && weeks) ? dmy(addDays(ld, span)) : "";
   }
+  /* reference search */
+  var refList = [];
+  function renderRef() {
+    var q = $("#ref-q").value.trim().toLowerCase(), box = $("#ref-res");
+    refList = customers.filter(function (c) {
+      return !q || [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase().indexOf(q) >= 0;
+    }).sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")) || (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); }).slice(0, 40);
+    box.innerHTML = refList.length ? refList.map(function (c, i) {
+      return '<button class="rcust exist" type="button" data-rf="' + i + '"><div><b>' + esc(c.name) + (c.fatherName ? " S/o " + esc(c.fatherName) : "") + "</b><small>Loan ID: " + esc(c.loanId || "") + (c.phone ? " · " + esc(c.phone) : "") + (c.area ? " · " + esc(c.area) : "") +
+        "</small></div><div class=\"ramt\"><b class=\"" + (isDone(c) ? "" : "warnt") + "\">" + (isDone(c) ? "Completed" : "Active") + "</b></div></button>";
+    }).join("") : '<p class="hint">பொருத்தமான customer இல்லை.</p>';
+  }
+  $("#ref-find").addEventListener("click", function () { $("#refov").hidden = false; $("#ref-q").value = ""; renderRef(); $("#ref-q").focus(); });
+  $("#ref-close").addEventListener("click", function () { $("#refov").hidden = true; });
+  $("#ref-q").addEventListener("input", renderRef);
+  $("#ref-res").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-rf]"); if (!b) return;
+    var c = refList[+b.getAttribute("data-rf")];
+    $("#f-ref").value = c.name + " · Loan " + (c.loanId || "");
+    $("#refov").hidden = true;
+  });
   /* existing customer search */
   var existList = [];
   function renderExist() {
@@ -1279,9 +1311,6 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var sorted = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     customers = sorted.filter(function (x) { return x.kind !== "capital" && acctOf(x) === acct; });
     capital = sorted.filter(function (x) { return x.kind === "capital" && acctOf(x) === acct; });
-    var seenN = {}, opts = "";
-    customers.forEach(function (x) { var n = String(x.name || "").trim(), k = n.toLowerCase(); if (n && !seenN[k]) { seenN[k] = 1; opts += '<option value="' + esc(n) + '">'; } });
-    $("#ref-list").innerHTML = opts;
     loaded = true; syncId(); renderAll(); renderBackup();
   }
   Array.prototype.forEach.call(document.querySelectorAll(".acct button"), function (b) {

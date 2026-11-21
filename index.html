@@ -119,7 +119,8 @@ main { padding-block: 16px 40px; }
 #refov[hidden] { display: none; }
 #refov .rtop { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 #refov .rtop input { flex: 1; min-width: 0; }
-#ref-res { display: grid; gap: 8px; }
+#ref-res { display: grid; gap: 12px; }
+#ref-res .cust { cursor: pointer; }
 .tile .go { color: var(--muted); font-size: 22px; }
 #lfilter .btn { width: 100%; margin-bottom: 10px; }
 .tile .v.good { color: var(--good); }
@@ -1163,21 +1164,18 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   var refList = [];
   function renderRef() {
     var q = $("#ref-q").value.trim().toLowerCase(), box = $("#ref-res");
-    var seen = {}, all = customers.slice().sort(function (a, b) { return (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); });
-    refList = [];
-    all.forEach(function (c) {
-      var key = (c.phone || "") + "|" + String(c.name || "").trim().toLowerCase();
-      if (seen[key]) return;
-      if (q && [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase().indexOf(q) < 0) {
-        var other = all.some(function (o) { return o !== c && (o.phone || "") + "|" + String(o.name || "").trim().toLowerCase() === key && [o.name, o.phone, o.loanId, o.fatherName, o.area].join(" ").toLowerCase().indexOf(q) >= 0; });
-        if (!other) return;
-      }
-      seen[key] = 1; refList.push(c);
+    var groups = {}, order = [];
+    function mk(c) { return (c.phone || "") + "|" + String(c.name || "").trim().toLowerCase(); }
+    function hay(c) { return [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase(); }
+    customers.forEach(function (c) {
+      var k = mk(c);
+      if (!groups[k]) { groups[k] = { rep: c, hit: false }; order.push(k); }
+      else if ((parseInt(c.loanId, 10) || 0) < (parseInt(groups[k].rep.loanId, 10) || 0)) groups[k].rep = c;
+      if (!q || hay(c).indexOf(q) >= 0) groups[k].hit = true;
     });
-    refList = refList.sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); }).slice(0, 40);
+    refList = order.filter(function (k) { return groups[k].hit; }).map(function (k) { return groups[k].rep; }).slice(0, 60);
     box.innerHTML = refList.length ? refList.map(function (c, i) {
-      return '<button class="rcust exist" type="button" data-rf="' + i + '"><div><b>' + esc(c.name) + (c.fatherName ? " S/o " + esc(c.fatherName) : "") + "</b><small>Loan ID: " + esc(c.loanId || "") + (c.phone ? " · " + esc(c.phone) : "") + (c.area ? " · " + esc(c.area) : "") +
-        "</small></div><div class=\"ramt\"><b class=\"" + (isDone(c) ? "" : "warnt") + "\">" + (isDone(c) ? "Completed" : "Active") + "</b></div></button>";
+      return '<article class="cust" data-rf="' + i + '"><div class="head"><div><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p><h3>" + esc(c.name) + "</h3></div></div></article>";
     }).join("") : '<p class="hint">பொருத்தமான customer இல்லை.</p>';
   }
   $("#ref-find").addEventListener("click", function () { $("#refov").hidden = false; $("#ref-q").value = ""; renderRef(); $("#ref-q").focus(); });

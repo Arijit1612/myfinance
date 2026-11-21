@@ -1163,9 +1163,18 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   var refList = [];
   function renderRef() {
     var q = $("#ref-q").value.trim().toLowerCase(), box = $("#ref-res");
-    refList = customers.filter(function (c) {
-      return !q || [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase().indexOf(q) >= 0;
-    }).sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")) || (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); }).slice(0, 40);
+    var seen = {}, all = customers.slice().sort(function (a, b) { return (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); });
+    refList = [];
+    all.forEach(function (c) {
+      var key = (c.phone || "") + "|" + String(c.name || "").trim().toLowerCase();
+      if (seen[key]) return;
+      if (q && [c.name, c.phone, c.loanId, c.fatherName, c.area].join(" ").toLowerCase().indexOf(q) < 0) {
+        var other = all.some(function (o) { return o !== c && (o.phone || "") + "|" + String(o.name || "").trim().toLowerCase() === key && [o.name, o.phone, o.loanId, o.fatherName, o.area].join(" ").toLowerCase().indexOf(q) >= 0; });
+        if (!other) return;
+      }
+      seen[key] = 1; refList.push(c);
+    });
+    refList = refList.sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); }).slice(0, 40);
     box.innerHTML = refList.length ? refList.map(function (c, i) {
       return '<button class="rcust exist" type="button" data-rf="' + i + '"><div><b>' + esc(c.name) + (c.fatherName ? " S/o " + esc(c.fatherName) : "") + "</b><small>Loan ID: " + esc(c.loanId || "") + (c.phone ? " · " + esc(c.phone) : "") + (c.area ? " · " + esc(c.area) : "") +
         "</small></div><div class=\"ramt\"><b class=\"" + (isDone(c) ? "" : "warnt") + "\">" + (isDone(c) ? "Completed" : "Active") + "</b></div></button>";
@@ -1177,7 +1186,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   $("#ref-res").addEventListener("click", function (e) {
     var b = e.target.closest("[data-rf]"); if (!b) return;
     var c = refList[+b.getAttribute("data-rf")];
-    $("#f-ref").value = c.name + " · Loan " + (c.loanId || "");
+    $("#f-ref").value = c.name + " · Loan ID: " + (c.loanId || "");
     $("#refov").hidden = true;
   });
   /* existing customer search */

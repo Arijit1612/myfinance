@@ -244,6 +244,11 @@ main { padding-block: 16px 40px; }
 .rcust.arr .b:disabled { opacity: .35; }
 #arr-list { display: grid; gap: 8px; margin: 8px 0 12px; }
 #cap-list .b.del { margin-top: 6px; padding: 6px 10px; font-size: 12px; }
+.guide { background: var(--field); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; }
+.guide b { display: block; font-size: 17px; }
+.guide small { display: block; color: var(--muted); margin: 2px 0 10px; }
+.guide .gbtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.guide .gbtns .btn { flex: 1; min-width: 160px; }
 .rtap { cursor: pointer; }
 .rtap.ropen span:first-child { color: var(--accent); font-weight: 600; }
 .rdetail { display: grid; gap: 8px; padding: 2px 0 6px 10px; border-left: 2px solid var(--line); }
@@ -424,6 +429,11 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       <div class="field">
         <label for="f-end">Loan end date</label>
         <input type="text" id="f-end" class="calc" readonly tabindex="-1">
+      </div>
+      <div class="field">
+        <label for="f-ref">Reference (யார் சொல்லி வந்தார்)</label>
+        <input type="text" id="f-ref" list="ref-list" placeholder="Optional" autocomplete="off">
+        <datalist id="ref-list"></datalist>
       </div>
       <div class="field">
         <label for="f-notes">Notes (optional)</label>
@@ -731,6 +741,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       h += '<dl class="info-list">' + rows.map(function (r) {
         return "<div><dt>" + esc(r[0]) + '</dt><dd class="' + r[2] + '">' + esc(r[1]) + "</dd></div>";
       }).join("") + "</dl>" + historyHtml(c);
+      if (c.reference) h += '<p class="meta">Reference: ' + esc(c.reference) + "</p>";
       if (c.notes) h += '<p class="meta">Note: ' + esc(c.notes) + "</p>";
     }
     $("#detail").innerHTML = h;
@@ -939,7 +950,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         : r.rank === 1 ? '<span class="st s1">Collected ' + inr(r.tot) + "</span>"
         : '<span class="st s0">Pending</span>';
       var sub = ["Loan ID: " + esc(c.loanId || ""), esc(c.area || ""), isDueToday(c, t) ? "" : "Not due on this date"].filter(Boolean).join(" · ");
-      var h = '<article class="crow r' + r.rank + '"><button class="chead" data-crow="' + id + '" aria-expanded="' + (colOpen === c.id) + '">' +
+      var h = '<article class="crow r' + r.rank + '"><button class="chead" ' + 'data-crow="' + id + '" ' + 'aria-expanded="' + (colOpen === c.id) + '">' +
         '<span class="cl"><span class="cname">' + esc(c.name) + '</span><span class="csub">' + sub + "</span></span>" +
         '<span class="cr"><span class="camt">' + inr(r.due) + "</span>" + st + "</span></button>";
       if (colOpen === c.id) {
@@ -1062,6 +1073,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       a.disabled = true;
       col.doc(id).update(patch).then(function () { colOpen = null; toast(inr(amt) + " saved for " + c.name + (cdate === today() ? "" : " on " + dmy(cdate)) + "."); renderCollection(); })
         .catch(function (err) { a.disabled = false; writeError(err); });
+    } else if (cdate > today() && (act === "save" || act === "update" || act === "clear")) {
+      toast("எதிர்கால தேதிக்கு collection entry போட முடியாது.");
     } else if (act === "update" && c) {
       var ec = Math.round(+draft.cash || 0), eu = Math.round(+draft.upi || 0), cur0 = paidOn(c, cdate), pt = {};
       var nd = draft.date || cdate, moved = nd !== cdate;
@@ -1090,7 +1103,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   function setCDate(v) {
     var t = today();
     if (!v) return;
-    if (v > t) { toast("Future dates are not allowed."); v = t; }
+    if (v > t) { toast("எதிர்கால தேதி வேண்டாம்."); v = t; }
     cdate = v; colOpen = null;
     $("#c-date").value = cdate;
     renderCollection();
@@ -1186,7 +1199,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#f-interest").value = c.interest == null ? "" : c.interest;
     $("#f-mode").value = c.scheme || "weekly";
     buildPeriod($("#f-mode").value, $("#f-mode").value === "daily" ? count(c) : c.weeks);
-    $("#f-ldate").value = c.loanDate || today(); $("#f-notes").value = c.notes || "";
+    $("#f-ldate").value = c.loanDate || today(); $("#f-notes").value = c.notes || ""; $("#f-ref").value = c.reference || "";
     calc(); setFormMode(); go("add");
   }
   ["#f-loan", "#f-interest", "#f-weeks", "#f-mode", "#f-ldate"].forEach(function (q) {
@@ -1220,6 +1233,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       loanAmount: loan, interest: intr, disbursed: loan - intr, rate: Math.round(intr / loan * 10000) / 100,
       weeks: mode === "daily" ? Math.ceil(weeks / 7) : weeks, days: mode === "daily" ? weeks : null, scheme: mode, installment: Math.ceil(loan / n), totalDue: loan,
       loanDate: ld, firstDate: addDays(ld, mode === "daily" ? 1 : 7), endDate: addDays(ld, span),
+      reference: $("#f-ref").value.trim(),
       notes: $("#f-notes").value.trim()
     };
     var btn = $("#add-btn"); btn.disabled = true;
@@ -1265,6 +1279,9 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var sorted = rows.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     customers = sorted.filter(function (x) { return x.kind !== "capital" && acctOf(x) === acct; });
     capital = sorted.filter(function (x) { return x.kind === "capital" && acctOf(x) === acct; });
+    var seenN = {}, opts = "";
+    customers.forEach(function (x) { var n = String(x.name || "").trim(), k = n.toLowerCase(); if (n && !seenN[k]) { seenN[k] = 1; opts += '<option value="' + esc(n) + '">'; } });
+    $("#ref-list").innerHTML = opts;
     loaded = true; syncId(); renderAll(); renderBackup();
   }
   Array.prototype.forEach.call(document.querySelectorAll(".acct button"), function (b) {
@@ -1337,11 +1354,11 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     renderBackup(); toast("Backup downloaded.");
   });
   $("#bk-csv").addEventListener("click", function () {
-    var head = ["Account", "Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Period", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Notes"];
+    var head = ["Account", "Loan ID", "Name", "Father", "Phone", "Area", "Loan Amount", "Interest", "Disbursed", "Mode", "Period", "Installment", "Total Due", "Loan Date", "First Collection", "End Date", "Paid", "Balance", "Reference", "Notes"];
     var lines = [head.map(csvCell).join(",")];
     customers.slice().sort(function (a, b) { return (parseInt(a.loanId, 10) || 0) - (parseInt(b.loanId, 10) || 0); }).forEach(function (c) {
       lines.push([acct === "aa" ? "AA" : "Venus", c.loanId, c.name, c.fatherName, c.phone, c.area, c.loanAmount, c.interest, c.disbursed, c.scheme, (c.scheme === "daily" ? count(c) + " days" : c.weeks + " weeks"), c.installment, c.totalDue,
-        c.loanDate, c.firstDate, c.endDate, sum(c), pendingOf(c), c.notes].map(csvCell).join(","));
+        c.loanDate, c.firstDate, c.endDate, sum(c), pendingOf(c), c.reference, c.notes].map(csvCell).join(","));
     });
     saveFile("my-finance-" + acct + "-customers-" + today() + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
     toast("Excel file downloaded.");

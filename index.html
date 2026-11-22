@@ -238,6 +238,7 @@ main { padding-block: 16px 40px; }
 .ptable.six .prow { grid-template-columns: 0.45fr 1.1fr 1.3fr 0.95fr 1.05fr 0.85fr; gap: 3px; }
 .ptable.six .prow span { padding: 8px 2px; font-size: 11px; text-align: center; overflow-wrap: normal; word-break: normal; }
 .ptable.six .prow:not(.phead) span:nth-child(2), .ptable.six .prow:not(.phead) span:nth-child(3) { white-space: nowrap; }
+.ptable.six .prow span.er { color: var(--good); font-weight: 600; }
 .ptable.six .prow span.lt { color: var(--warn); font-weight: 600; }
 .plate { margin: -2px 0 2px; padding: 7px 10px; border-radius: 10px; font-size: 13px; color: var(--warn); background: var(--card); border: 1px dashed var(--line); }
 .prow { display: grid; grid-template-columns: 0.7fr 1.5fr 1fr 1.2fr; gap: 8px; }
@@ -704,15 +705,15 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     function sd(x) { var q = parts(x); return pad(q[2]) + "/" + pad(q[1]) + "/" + String(q[0]).slice(2); }
     var run = 0, recs = [], anyLate = false;
     days.forEach(function (d, i) {
-      var e = c.paid[d], a = (+e.cash || 0) + (+e.upi || 0), before = run, due = null, late = 0;
+      var e = c.paid[d], a = (+e.cash || 0) + (+e.upi || 0), before = run, due = null, late = 0, early = 0;
       run += a;
       if (inst > 0 && c.firstDate && n > 0) {
         var k = Math.min(n - 1, Math.floor(before / inst));
         due = addDays(c.firstDate, step * k);
-        late = Math.max(0, gap(due, d));
-        if (late > 0) anyLate = true;
+        late = Math.max(0, gap(due, d)); early = Math.max(0, gap(d, due));
+        if (late > 0 || early > 0) anyLate = true;
       }
-      recs.push({ i: i + 1, d: d, a: a, run: run, due: due, late: late });
+      recs.push({ i: i + 1, d: d, a: a, run: run, due: due, late: late, early: early });
     });
     if (!anyLate) {
       h += '<div class="ptable"><div class="prow phead"><span>S.No</span><span>Date</span><span>EMI</span><span>Total Repaid</span></div>';
@@ -721,7 +722,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     }
     h += '<div class="ptable six"><div class="prow phead"><span>S.No</span><span>Due Date</span><span>Collection Date</span><span>EMI</span><span>Total Repaid</span><span>Delay Days</span></div>';
     recs.forEach(function (r) {
-      h += '<div class="prow"><span>' + r.i + "</span><span>" + (r.due ? sd(r.due) : "—") + "</span><span>" + sd(r.d) + "</span><span>" + inr(r.a) + "</span><span>" + inr(r.run) + '</span><span class="' + (r.late ? "lt" : "") + '">' + (r.late ? r.late + (r.late === 1 ? " day" : " days") : "—") + "</span></div>";
+      h += '<div class="prow"><span>' + r.i + "</span><span>" + (r.due ? sd(r.due) : "—") + "</span><span>" + sd(r.d) + "</span><span>" + inr(r.a) + "</span><span>" + inr(r.run) + '</span><span class="' + (r.late ? "lt" : r.early ? "er" : "") + '">' + (r.late ? r.late + (r.late === 1 ? " day" : " days") : r.early ? r.early + (r.early === 1 ? " day" : " days") + " Early" : "—") + "</span></div>";
     });
     return h + "</div>";
   }

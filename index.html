@@ -291,8 +291,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     <div class="acctrow">
       <h1 id="app-title">Venus Finance</h1>
       <div class="acct" role="group" aria-label="Account">
-        <button type="button" data-acct="venus" aria-pressed="true">Venus</button>
-        <button type="button" data-acct="aa" aria-pressed="false">AA</button>
+        <button type="button" data-acct="venus" aria-pressed="true">V</button>
+        <button type="button" data-acct="aa" aria-pressed="false">A</button>
       </div>
     </div>
     <p class="sub"><span class="dot" id="dot"></span><span id="status">Daily Collection Manager · Offline</span></p>
@@ -560,7 +560,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   var customers = [];
   var capital = [];
   var KEY_ACCT = "mf.acct";
-  var ACCTS = { venus: "Venus Finance", aa: "AA Finance" };
+  var ACCTS = { venus: "Venus Finance", aa: "Venus Finance" };
   var acct = "venus";
   try { var sa = localStorage.getItem(KEY_ACCT); if (sa === "aa" || sa === "venus") acct = sa; } catch (e) {}
   function acctOf(x) { return x.acct === "aa" ? "aa" : "venus"; }
@@ -1221,7 +1221,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
 
   function setFormMode() {
     $("#exist-box").hidden = !!editingId;
-    $("#form-title").textContent = (editingId ? "Edit Customer / Loan" : "Add Customer / Loan") + " · " + (acct === "aa" ? "AA" : "Venus");
+    $("#form-title").textContent = (editingId ? "Edit Customer / Loan" : "Add Customer / Loan") + " · " + (acct === "aa" ? "A" : "V");
     $("#add-btn").textContent = editingId ? "Update Customer" : "Save Customer";
     $("#clear-btn").textContent = editingId ? "Cancel" : "Clear";
   }
@@ -1333,7 +1333,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       resetForm();
       refresh();
       if (cur === "customer") go("dashboard");
-      toast(ACCTS[acct] + " தேர்ந்தெடுக்கப்பட்டது.");
+      toast((acct === "aa" ? "A" : "V") + " தேர்ந்தெடுக்கப்பட்டது.");
     });
   });
   applyAcct();

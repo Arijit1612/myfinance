@@ -625,6 +625,17 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     return s;
   }
 
+  function tomorrow() { return addDays(today(), 1); }
+  function tomorrowStat() {
+    var d = tomorrow(), n = 0, amt = 0;
+    customers.forEach(function (c) {
+      if (isDone(c) || !isDueToday(c, d)) return;
+      var p = paidOn(c, d);
+      if (p.cash + p.upi > 0 || settledElsewhere(c, d)) return;
+      n++; amt += dueToday(c, d);
+    });
+    return n + " பேர் · " + inr(amt);
+  }
   function renderDashboard() {
     var s = stats();
     $("#today-label").textContent = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -634,6 +645,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       ["Completed Customers", s.done, ""],
       ["Today's Collection Target · Daily", inr(s.tD), ""],
       ["Today's Collection Target · Weekly", inr(s.tW), ""],
+      ["Tomorrow's Collection", tomorrowStat(), "", "tm"],
       ["Collected Today · Daily", inr(s.cD), s.cD > 0 ? "good" : ""],
       ["Collected Today · Weekly", inr(s.cW), s.cW > 0 ? "good" : ""],
       ["Loan Disbursement Today", inr(s.dispToday), ""],
@@ -648,8 +660,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       ["Cash in Hand", inr(cashInHand()), cashInHand() < 0 ? "warn" : ""]
     ];
     $("#tiles").innerHTML = tiles.map(function (t) {
-      var f = t[0] === "Total Customers" ? "all" : t[0] === "Active Customers" ? "active" : t[0] === "Completed Customers" ? "done" : "";
-      return '<div class="tile' + (f ? " tap" : "") + '"' + (f ? ' data-lf="' + f + '"' : "") + '><p class="k">' + esc(t[0]) + '</p><p class="v ' + t[2] + '">' + esc(t[1]) + (f ? ' <span class="go">›</span>' : "") + "</p></div>";
+      var tm = t[3] === "tm", f = t[0] === "Total Customers" ? "all" : t[0] === "Active Customers" ? "active" : t[0] === "Completed Customers" ? "done" : "";
+      return '<div class="tile' + (f || tm ? " tap" : "") + '"' + (f ? ' data-lf="' + f + '"' : "") + (tm ? ' data-tm="1"' : "") + '><p class="k">' + esc(t[0]) + '</p><p class="v ' + t[2] + '">' + esc(t[1]) + (f || tm ? ' <span class="go">›</span>' : "") + "</p></div>";
     }).join("");
     $("#dash-empty").innerHTML = (loaded && !customers.length && col)
       ? '<div class="notice"><p>No customers yet. Add the first one and these numbers fill in.</p><button class="btn small" data-go="add">Add Customer</button></div>'
@@ -929,7 +941,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
   function dmyS(x) { var q = parts(x); return pad(q[2]) + "/" + pad(q[1]) + "/" + String(q[0]).slice(2); }
   function renderCollection() {
-    var t = cdate, q = cquery.trim().toLowerCase();
+    var t = cdate, q = cquery.trim().toLowerCase(), future = t > today();
     var rows = [], target = 0, got = 0, left = 0;
     customers.forEach(function (c) {
       var p = paidOn(c, t), tot = p.cash + p.upi, due = dueToday(c, t);
@@ -961,9 +973,9 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       var st = r.se ? '<span class="st s2">✓ Paid ' + esc(dmyS(r.se.date)) + (r.se.date > t ? " (late)" : "") + "</span>"
         : r.rank === 2 ? '<span class="st s2">✓ Collected ' + inr(r.tot) + "</span>"
         : r.rank === 1 ? '<span class="st s1">Collected ' + inr(r.tot) + "</span>"
-        : '<span class="st s0">Pending</span>';
+        : '<span class="st s0">' + (future ? "Due" : "Pending") + "</span>";
       var sub = ["Loan ID: " + esc(c.loanId || ""), esc(c.area || ""), isDueToday(c, t) ? "" : "Not due on this date"].filter(Boolean).join(" · ");
-      var h = '<article class="crow r' + r.rank + '"><button class="chead" ' + 'data-crow="' + id + '" ' + 'aria-expanded="' + (colOpen === c.id) + '">' +
+      var h = '<article class="crow r' + r.rank + '"><button class="chead" ' + (future ? "" : 'data-crow="' + id + '" ') + 'aria-expanded="' + (colOpen === c.id) + '">' +
         '<span class="cl"><span class="cname">' + esc(c.name) + '</span><span class="csub">' + sub + "</span></span>" +
         '<span class="cr"><span class="camt">' + inr(r.due) + "</span>" + st + "</span></button>";
       if (colOpen === c.id) {
@@ -1009,7 +1021,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     if (v === "pending") renderPending();
     if (v === "capital") { $("#cap-date").max = today(); if (!$("#cap-date").value) $("#cap-date").value = today(); renderCapital(); }
     if (v === "customer") renderDetail();
-    if (v === "collection") { $("#c-date").max = today(); renderCollection(); }
+    if (v === "collection") { $("#c-date").max = tomorrow(); renderCollection(); }
     window.scrollTo(0, 0);
   }
   function go(v) { if (location.hash === "#" + v) show(v); else location.hash = v; }
@@ -1053,6 +1065,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         }
         renderCollection(); return;
       }
+      var tmx = e.target.closest("[data-tm]");
+      if (tmx) { cquery = ""; if ($("#csearch")) $("#csearch").value = ""; setCDate(tomorrow()); go("collection"); return; }
       var lf = e.target.closest("[data-lf]");
       if (lf) { listFilter = lf.getAttribute("data-lf"); query = ""; $("#search").value = ""; if (cur === "list") renderList(); else go("list"); return; }
       var mr = e.target.closest("[data-month]");
@@ -1116,7 +1130,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   function setCDate(v) {
     var t = today();
     if (!v) return;
-    if (v > t) { toast("எதிர்கால தேதி வேண்டாம்."); v = t; }
+    if (v > tomorrow()) { toast("நாளைக்கு மேல தேதி வேண்டாம்."); v = t; }
     cdate = v; colOpen = null;
     $("#c-date").value = cdate;
     renderCollection();

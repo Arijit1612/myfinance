@@ -255,6 +255,11 @@ main { padding-block: 16px 40px; }
 #arr-list { display: grid; gap: 8px; margin: 8px 0 12px; }
 #cap-list .b { margin-top: 6px; padding: 6px 10px; font-size: 12px; border-radius: 10px; }
 #cap-list .b.edit { margin-right: 6px; }
+#cap-list .capr { display: block; }
+#cap-list .capr .ctop { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+#cap-list .capr small { display: block; margin-top: 2px; }
+#cap-list .capr .cbtn { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+#cap-list .capr .cbtn .b { margin: 0; }
 .guide { background: var(--field); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; }
 .guide b { display: block; font-size: 17px; }
 .guide small { display: block; color: var(--muted); margin: 2px 0 10px; }
@@ -826,7 +831,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var rows2 = capital.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? 1 : (a.date || "") > (b.date || "") ? -1 : 0; });
     ls.innerHTML = '<div class="rdetail pl">' + rows2.map(function (x) {
       var w = x.type === "withdraw", id = esc(x.id);
-      return '<div class="rcust"><div><b>' + (w ? "Withdraw" : "Capital Add") + "</b><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + "</small></div><div class=\"ramt\"><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + '</b><button class="b edit" data-capedit="' + id + '" type="button">Edit</button><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
+      return '<div class="rcust capr"><div class="ctop"><b>' + (w ? "Withdraw" : "Capital Add") + "</b><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + "</b></div><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + '</small><div class="cbtn"><button class="b edit" data-capedit="' + id + '" type="button">Edit</button><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
     }).join("") + "</div>";
   }
   $("#cap-save").addEventListener("click", function () {

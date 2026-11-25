@@ -489,6 +489,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         <input type="text" id="cap-note" placeholder="Optional" autocomplete="off">
       </div>
       <button class="btn" id="cap-save" type="button">Save Capital</button>
+      <button class="btn ghost small" id="cap-cancel" type="button" hidden>✕ Edit வேண்டாம்</button>
       <p class="subh">History</p>
       <div id="cap-list"></div>
     </div>
@@ -815,7 +816,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   $("#arr-reset").addEventListener("click", function () { saveTabs(TAB_DEFAULT.slice()); applyTabs(TAB_DEFAULT); renderArrange(); });
   applyTabs(tabOrder());
 
-  var capConfirm = null;
+  var capConfirm = null, capEdit = null;
   function renderCapital() {
     var sm = $("#cap-sum"), ls = $("#cap-list");
     if (!sm || !ls) return;
@@ -824,18 +825,37 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var rows2 = capital.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? 1 : (a.date || "") > (b.date || "") ? -1 : 0; });
     ls.innerHTML = '<div class="rdetail pl">' + rows2.map(function (x) {
       var w = x.type === "withdraw", id = esc(x.id);
-      return '<div class="rcust"><div><b>' + (w ? "Withdraw" : "Capital Add") + "</b><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + "</small></div><div class=\"ramt\"><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + '</b><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
+      return '<div class="rcust"><div><b>' + (w ? "Withdraw" : "Capital Add") + "</b><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + "</small></div><div class=\"ramt\"><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + '</b><button class="b edit" data-capedit="' + id + '" type="button">Edit</button><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
     }).join("") + "</div>";
   }
   $("#cap-save").addEventListener("click", function () {
     var amt = +$("#cap-amt").value, d = $("#cap-date").value || today();
     if (!(amt > 0)) { toast("Amount போடுங்க."); return; }
     if (d > today()) { toast("எதிர்கால தேதி வேண்டாம்."); return; }
+    if (capEdit) {
+      col.doc(capEdit).update({ type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim() }).catch(writeError);
+      capReset(); toast("Capital updated.");
+      return;
+    }
     col.add({ kind: "capital", acct: acct, type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
     $("#cap-amt").value = ""; $("#cap-note").value = "";
     toast("Capital saved.");
   });
+  function capReset() {
+    capEdit = null; $("#cap-amt").value = ""; $("#cap-note").value = ""; $("#cap-date").value = today(); $("#cap-type").value = "add";
+    $("#cap-save").textContent = "Save Capital"; $("#cap-cancel").hidden = true;
+  }
+  $("#cap-cancel").addEventListener("click", capReset);
   $("#cap-list").addEventListener("click", function (e) {
+    var eb = e.target.closest("[data-capedit]");
+    if (eb) {
+      var x = capital.filter(function (y) { return y.id === eb.getAttribute("data-capedit"); })[0]; if (!x) return;
+      capEdit = x.id; capConfirm = null;
+      $("#cap-amt").value = x.amount; $("#cap-type").value = x.type === "withdraw" ? "withdraw" : "add"; $("#cap-date").value = x.date || today(); $("#cap-note").value = x.note || "";
+      $("#cap-save").textContent = "Update Capital"; $("#cap-cancel").hidden = false; renderCapital();
+      $("#cap-amt").scrollIntoView({ block: "center" }); $("#cap-amt").focus();
+      return;
+    }
     var b = e.target.closest("[data-capdel]"); if (!b) return;
     var id = b.getAttribute("data-capdel");
     if (capConfirm !== id) { capConfirm = id; renderCapital(); return; }

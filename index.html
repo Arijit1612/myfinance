@@ -169,6 +169,9 @@ main { padding-block: 16px 40px; }
 .list { display: grid; gap: 12px; }
 .cust { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 14px; min-width: 0; cursor: pointer; }
 .cust .head, .dhead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.head2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.cust > h3 { margin: 2px 0 0; }
+.dname { margin: 4px 0 0; font-size: 26px; }
 .lid { margin: 0; font-size: 15px; font-weight: 500; color: var(--fg); }
 .cust h3 { margin: 4px 0 0; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
 .meta { margin: 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
@@ -707,8 +710,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#list").innerHTML = rows.map(function (c) {
       var done = isDone(c);
       return '<article class="cust" data-open="' + esc(c.id) + '">' +
-        '<div class="head"><div><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p><h3>" + esc(c.name) + "</h3></div>" +
-        '<span class="pill ' + (done ? "done" : "due") + '">' + (done ? "Completed" : "Balance due") + "</span></div>" +
+        '<div class="head2"><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p>" +
+        '<span class="pill ' + (done ? "done" : "due") + '">' + (done ? "Completed" : "Balance due") + "</span></div><h3>" + esc(c.name) + "</h3>" +
         actionsHtml(c, false) + "</article>";
     }).join("");
   }
@@ -751,8 +754,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     if (!c) { $("#detail").innerHTML = ""; return; }
     var done = isDone(c), nd = nextDue(c), pl = function (n) { return n + (c.scheme === "daily" ? (n === 1 ? " day" : " days") : (n === 1 ? " week" : " weeks")); };
     var who = [c.fatherName ? "S/o " + esc(c.fatherName) : "", esc(c.area || ""), esc(c.phone || "")].filter(Boolean).join(" · ");
-    var h = '<div class="dhead"><div><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p><h2>" + esc(c.name) + "</h2></div>" +
-      '<span class="pill ' + (done ? "done" : "due") + '">' + (done ? "Completed" : "Balance due") + "</span></div>" +
+    var h = '<div class="head2"><p class="lid">Loan ID: ' + esc(c.loanId || "") + "</p>" +
+      '<span class="pill ' + (done ? "done" : "due") + '">' + (done ? "Completed" : "Balance due") + "</span></div><h2 class=\"dname\">" + esc(c.name) + "</h2>" +
       (who ? '<p class="meta">' + who + "</p>" : "") + actionsHtml(c, true);
     if (infoOpen) {
       var rows = [

@@ -922,7 +922,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   $("#cap-cancel").addEventListener("click", capReset);
   $("#cap-list").addEventListener("click", function (e) {
     var cd = e.target.closest("[data-cday]");
-    if (cd) { cquery = ""; setCDate(cd.getAttribute("data-cday")); go("collection"); return; }
+    if (cd) { capBack = window.scrollY; cquery = ""; setCDate(cd.getAttribute("data-cday")); go("collection"); return; }
     var eb = e.target.closest("[data-capedit]");
     if (eb) {
       var x = capital.filter(function (y) { return y.id === eb.getAttribute("data-capedit"); })[0]; if (!x) return;
@@ -1102,6 +1102,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
   }
 
   /* navigation */
+  var capBack = null;
   function show(v) {
     if (VIEWS.indexOf(v) < 0) v = "dashboard";
     if (v === "customer" && !byId(selectedId)) v = "list";
@@ -1119,6 +1120,8 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     if (v === "customer") renderDetail();
     if (v === "collection") { $("#c-date").max = tomorrow(); renderCollection(); }
     window.scrollTo(0, 0);
+    if (v === "capital" && capBack != null) { window.scrollTo(0, capBack); capBack = null; }
+    else if (v !== "collection") capBack = null;
   }
   function go(v) { if (location.hash === "#" + v) show(v); else location.hash = v; }
   window.addEventListener("hashchange", function () { show(location.hash.slice(1)); });

@@ -259,6 +259,32 @@ main { padding-block: 16px 40px; }
 #cap-list .b { margin-top: 6px; padding: 6px 10px; font-size: 12px; border-radius: 10px; }
 #cap-list .b.edit { margin-right: 6px; }
 #cap-list .capr { display: block; }
+.tday { border: 1px solid var(--fg); margin: 0 0 14px; }
+.tday.nb .th, .tday.nb .tr { grid-template-columns: minmax(0, 1fr) 70px; }
+.tcols { display: grid; grid-template-columns: 1fr 1fr; }
+.tcol { min-width: 0; }
+.tcol + .tcol { border-left: 1px solid var(--fg); }
+.th, .tr { display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px; border-bottom: 1px solid var(--line); font-size: 11px; overflow-wrap: anywhere; }
+.th > *, .tr > * { padding: 5px 3px; min-width: 0; }
+.th > * + *, .tr > * + * { border-left: 1px solid var(--line); text-align: right; font-weight: 600; font-size: 10.5px; white-space: nowrap; padding-left: 1px; padding-right: 3px; }
+.th { border-bottom: 1px solid var(--fg); background: rgba(127,127,127,.12); font-weight: 700; }
+.th > span { font-weight: 700; white-space: nowrap; font-size: 10.5px; }
+.tr small { display: block; color: var(--muted); font-size: 10px; }
+.tr.mut { color: var(--muted); }
+.tr.cls b { color: var(--good); }
+.tr.cday { cursor: pointer; }
+.tr.cday b { color: var(--good); }
+.ttr { border-bottom: 0; }
+.tt2 { border-top: 2px solid var(--fg); }
+.tcols .tcol { display: flex; flex-direction: column; }
+.tt2 .tcol + .tcol { border-left: 1px solid var(--fg); }
+.ttr b { font-weight: 800; }
+.tbtn { display: flex; gap: 6px; padding: 4px 0 6px; }
+#cap-list .tbtn .b { margin: 0; padding: 4px 8px; font-size: 11px; }
+.ttot { display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid var(--fg); }
+.ttot > div { padding: 8px 6px; }
+.ttot > div + div { border-left: 1px solid var(--line); }
+.ttot b { font-size: 13px; font-weight: 800; }
 #cap-list .capr .ctop { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 #cap-list .capr small { display: block; margin-top: 2px; }
 #cap-list .capr .cbtn { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
@@ -442,6 +468,10 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
         <input type="date" id="f-ldate">
       </div>
       <div class="field">
+        <label for="f-dmode">Loan கொடுத்தது (Cash / Bank)</label>
+        <select id="f-dmode"><option value="cash">Cash</option><option value="bank">Bank</option></select>
+      </div>
+      <div class="field">
         <label for="f-first">First collection date</label>
         <input type="text" id="f-first" class="calc" readonly tabindex="-1">
       </div>
@@ -488,6 +518,10 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       <div class="field">
         <label for="cap-type">Type</label>
         <select id="cap-type"><option value="add">Capital சேர்த்தது (Add)</option><option value="withdraw">Capital எடுத்தது (Withdraw)</option></select>
+      </div>
+      <div class="field">
+        <label for="cap-mode">Cash / Bank</label>
+        <select id="cap-mode"><option value="cash">Cash</option><option value="bank">Bank</option></select>
       </div>
       <div class="field">
         <label for="cap-date">Date</label>
@@ -830,37 +864,70 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     var sm = $("#cap-sum"), ls = $("#cap-list");
     if (!sm || !ls) return;
     sm.innerHTML = '<div><small>Capital Invested</small><b>' + esc(inr(capNet())) + '</b></div><div><small>Cash in Hand</small><b>' + esc(inr(cashInHand())) + "</b></div>";
-    if (!capital.length) { ls.innerHTML = '<div class="notice"><p>Capital entry இன்னும் இல்லை.</p></div>'; return; }
-    var rows2 = capital.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? 1 : (a.date || "") > (b.date || "") ? -1 : 0; });
-    ls.innerHTML = '<div class="rdetail pl">' + rows2.map(function (x) {
-      var w = x.type === "withdraw", id = esc(x.id);
-      return '<div class="rcust capr"><div class="ctop"><b>' + (w ? "Withdraw" : "Capital Add") + "</b><b class=\"" + (w ? "warnt" : "") + "\">" + (w ? "− " : "+ ") + esc(inr(+x.amount || 0)) + "</b></div><small>" + esc(x.date ? fmtD(x.date) : "") + (x.note ? " · " + esc(x.note) : "") + '</small><div class="cbtn"><button class="b edit" data-capedit="' + id + '" type="button">Edit</button><button class="b del" data-capdel="' + id + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div></div>";
-    }).join("") + "</div>";
+    var days = {};
+    function dd(d) { return days[d] || (days[d] = { d: d, cap: [], wd: [], loans: [], cc: 0, cu: 0, n: 0, inC: 0, inB: 0, outC: 0, outB: 0 }); }
+    capital.forEach(function (x) {
+      var o = dd(x.date || "0000-00-00"), v = +x.amount || 0, bk = x.mode === "bank";
+      if (x.type === "withdraw") { o.wd.push(x); if (bk) o.outB += v; else o.outC += v; } else { o.cap.push(x); if (bk) o.inB += v; else o.inC += v; }
+    });
+    customers.forEach(function (c) {
+      var g = +c.disbursed || 0;
+      if (g) { var o = dd(c.loanDate || c.firstDate || "0000-00-00"); o.loans.push(c); if (c.dmode === "bank") o.outB += g; else o.outC += g; }
+      Object.keys(c.paid || {}).forEach(function (d) {
+        var e = c.paid[d] || {}, ca = +e.cash || 0, up = +e.upi || 0; if (ca + up <= 0) return;
+        var o = dd(d); o.cc += ca; o.cu += up; o.n++; o.inC += ca; o.inB += up;
+      });
+    });
+    var keys = Object.keys(days).sort();
+    if (!keys.length) { ls.innerHTML = '<div class="notice"><p>Entry இன்னும் இல்லை.</p></div>'; return; }
+    var rc = 0, rb = 0;
+    keys.forEach(function (k) { var o = days[k]; o.oC = rc; o.oB = rb; o.cC = rc + o.inC - o.outC; o.cB = rb + o.inB - o.outB; rc = o.cC; rb = o.cB; });
+    function m(v) { return v ? esc(inr(v).replace("₹", "")) : ""; }
+    var sb = false;
+    function row(l, c, bk, extra, cls) { return '<div class="tr ' + (cls || "") + '"' + (extra || "") + "><span>" + l + "</span><b>" + m(c) + "</b>" + (sb ? "<b>" + m(bk) + "</b>" : "") + "</div>"; }
+    function btns(x) { return '<div class="tbtn"><button class="b edit" data-capedit="' + esc(x.id) + '" type="button">Edit</button><button class="b del" data-capdel="' + esc(x.id) + '" type="button">' + (capConfirm === x.id ? "Tap again" : "Delete") + "</button></div>"; }
+    ls.innerHTML = keys.slice().reverse().map(function (k) {
+      var o = days[k];
+      sb = !!(o.oB || o.cB || o.inB || o.outB);
+      var dh = esc(k === "0000-00-00" ? "தேதி இல்லை" : dmyS(k)), hd = '<div class="th"><span>' + dh + "</span><b>Cash</b>" + (sb ? "<b>Bank</b>" : "") + "</div>";
+      var L = hd, R = hd;
+      if (k !== keys[0]) L += row("Opening", o.oC, o.oB, "", "mut");
+      o.cap.forEach(function (x) { var bk = x.mode === "bank", v = +x.amount || 0; L += row("Capital" + (x.note ? " · " + esc(x.note) : ""), bk ? 0 : v, bk ? v : 0) + btns(x); });
+      if (o.n) L += row("Collection ›<small>" + o.n + " பேர்</small>", o.cc, o.cu, ' data-cday="' + esc(o.d) + '"', "cday");
+      o.loans.forEach(function (c) { var bk = c.dmode === "bank", v = +c.disbursed || 0; R += row(esc(c.name) + "<small>Loan தந்தது · " + esc(c.loanId || "") + "</small>", bk ? 0 : v, bk ? v : 0); });
+      o.wd.forEach(function (x) { var bk = x.mode === "bank", v = +x.amount || 0; R += row("Withdraw" + (x.note ? " · " + esc(x.note) : ""), bk ? 0 : v, bk ? v : 0) + btns(x); });
+      R += row("Closing", o.cC, o.cB, "", "cls");
+      var tC = o.cC + o.outC, tB = o.cB + o.outB;
+      var tot = '<div class="tr ttr"><span></span><b>' + m(tC) + "</b>" + (sb ? "<b>" + m(tB) + "</b>" : "") + "</div>";
+      return '<div class="tday' + (sb ? "" : " nb") + '"><div class="tcols"><div class="tcol">' + L + '</div><div class="tcol">' + R + '</div></div><div class="tcols tt2"><div class="tcol">' + tot + '</div><div class="tcol">' + tot + "</div></div></div>";
+    }).join("");
   }
   $("#cap-save").addEventListener("click", function () {
     var amt = +$("#cap-amt").value, d = $("#cap-date").value || today();
     if (!(amt > 0)) { toast("Amount போடுங்க."); return; }
     if (d > today()) { toast("எதிர்கால தேதி வேண்டாம்."); return; }
     if (capEdit) {
-      col.doc(capEdit).update({ type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim() }).catch(writeError);
+      col.doc(capEdit).update({ type: $("#cap-type").value, mode: $("#cap-mode").value, amount: amt, date: d, note: $("#cap-note").value.trim() }).catch(writeError);
       capReset(); toast("Capital updated.");
       return;
     }
-    col.add({ kind: "capital", acct: acct, type: $("#cap-type").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
+    col.add({ kind: "capital", acct: acct, type: $("#cap-type").value, mode: $("#cap-mode").value, amount: amt, date: d, note: $("#cap-note").value.trim(), createdAt: Date.now() });
     $("#cap-amt").value = ""; $("#cap-note").value = "";
     toast("Capital saved.");
   });
   function capReset() {
-    capEdit = null; $("#cap-amt").value = ""; $("#cap-note").value = ""; $("#cap-date").value = today(); $("#cap-type").value = "add";
+    capEdit = null; $("#cap-amt").value = ""; $("#cap-note").value = ""; $("#cap-date").value = today(); $("#cap-type").value = "add"; $("#cap-mode").value = "cash";
     $("#cap-save").textContent = "Save Capital"; $("#cap-cancel").hidden = true;
   }
   $("#cap-cancel").addEventListener("click", capReset);
   $("#cap-list").addEventListener("click", function (e) {
+    var cd = e.target.closest("[data-cday]");
+    if (cd) { cquery = ""; setCDate(cd.getAttribute("data-cday")); go("collection"); return; }
     var eb = e.target.closest("[data-capedit]");
     if (eb) {
       var x = capital.filter(function (y) { return y.id === eb.getAttribute("data-capedit"); })[0]; if (!x) return;
       capEdit = x.id; capConfirm = null;
-      $("#cap-amt").value = x.amount; $("#cap-type").value = x.type === "withdraw" ? "withdraw" : "add"; $("#cap-date").value = x.date || today(); $("#cap-note").value = x.note || "";
+      $("#cap-amt").value = x.amount; $("#cap-type").value = x.type === "withdraw" ? "withdraw" : "add"; $("#cap-date").value = x.date || today(); $("#cap-mode").value = x.mode === "bank" ? "bank" : "cash"; $("#cap-note").value = x.note || "";
       $("#cap-save").textContent = "Update Capital"; $("#cap-cancel").hidden = false; renderCapital();
       $("#cap-amt").scrollIntoView({ block: "center" }); $("#cap-amt").focus();
       return;
@@ -1282,7 +1349,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
     $("#f-interest").value = c.interest == null ? "" : c.interest;
     $("#f-mode").value = c.scheme || "weekly";
     buildPeriod($("#f-mode").value, $("#f-mode").value === "daily" ? count(c) : c.weeks);
-    $("#f-ldate").value = c.loanDate || today(); $("#f-notes").value = c.notes || ""; $("#f-ref").value = c.reference || "";
+    $("#f-ldate").value = c.loanDate || today(); $("#f-notes").value = c.notes || ""; $("#f-ref").value = c.reference || ""; $("#f-dmode").value = c.dmode === "bank" ? "bank" : "cash";
     calc(); setFormMode(); go("add");
   }
   ["#f-loan", "#f-interest", "#f-weeks", "#f-mode", "#f-ldate"].forEach(function (q) {
@@ -1316,7 +1383,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       loanAmount: loan, interest: intr, disbursed: loan - intr, rate: Math.round(intr / loan * 10000) / 100,
       weeks: mode === "daily" ? Math.ceil(weeks / 7) : weeks, days: mode === "daily" ? weeks : null, scheme: mode, installment: Math.ceil(loan / n), totalDue: loan,
       loanDate: ld, firstDate: addDays(ld, mode === "daily" ? 1 : 7), endDate: addDays(ld, span),
-      reference: $("#f-ref").value.trim(),
+      reference: $("#f-ref").value.trim(), dmode: $("#f-dmode").value,
       notes: $("#f-notes").value.trim()
     };
     var btn = $("#add-btn"); btn.disabled = true;

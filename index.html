@@ -894,7 +894,7 @@ input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
       if (k !== keys[0]) L += row("Opening", o.oC, o.oB, "", "mut");
       o.cap.forEach(function (x) { var bk = x.mode === "bank", v = +x.amount || 0; L += row("Capital" + (x.note ? " · " + esc(x.note) : ""), bk ? 0 : v, bk ? v : 0) + btns(x); });
       if (o.n) L += row("Collection ›<small>" + o.n + " பேர்</small>", o.cc, o.cu, ' data-cday="' + esc(o.d) + '"', "cday");
-      o.loans.forEach(function (c) { var bk = c.dmode === "bank", v = +c.disbursed || 0; R += row(esc(c.name) + "<small>Loan தந்தது · " + esc(c.loanId || "") + "</small>", bk ? 0 : v, bk ? v : 0); });
+      o.loans.forEach(function (c) { var bk = c.dmode === "bank", v = +c.disbursed || 0; R += row(esc(c.name) + "<small>Loan ID: " + esc(c.loanId || "") + "</small>", bk ? 0 : v, bk ? v : 0); });
       o.wd.forEach(function (x) { var bk = x.mode === "bank", v = +x.amount || 0; R += row("Withdraw" + (x.note ? " · " + esc(x.note) : ""), bk ? 0 : v, bk ? v : 0) + btns(x); });
       R += row("Closing", o.cC, o.cB, "", "cls");
       var tC = o.cC + o.outC, tB = o.cB + o.outB;
